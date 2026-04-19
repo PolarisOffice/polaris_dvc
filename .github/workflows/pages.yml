@@ -1,0 +1,77 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Grants required for the official GitHub Pages deploy flow
+# (see actions/deploy-pages). `id-token: write` is needed for the
+# signed OIDC handshake the action performs with the Pages service.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow at most one Pages deploy running at a time, but don't cancel
+# an in-flight production deploy — finish it so the site doesn't
+# get stuck in a half-deployed state.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build + stage site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build polaris-rhwpdvc-wasm
+        run: wasm-pack build crates/polaris-rhwpdvc-wasm --target web --out-name polaris_rhwpdvc
+
+      - name: Assemble site/
+        # Flatten the demo into a self-contained static bundle:
+        #   site/index.html
+        #   site/app.js       (import path rewritten to ./pkg/)
+        #   site/pkg/polaris_rhwpdvc.js
+        #   site/pkg/polaris_rhwpdvc_bg.wasm
+        # The local-dev layout uses `../../crates/.../pkg/` which only works
+        # when the server is run from the repo root; this rewrite makes the
+        # deployed site work from any path.
+        run: |
+          set -euxo pipefail
+          mkdir -p site/pkg
+          cp examples/web/index.html site/
+          cp examples/web/app.js site/
+          cp crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc.js site/pkg/
+          cp crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc_bg.wasm site/pkg/
+          sed -i 's|\.\./\.\./crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc\.js|./pkg/polaris_rhwpdvc.js|' site/app.js
+          # Sanity: confirm the rewrite landed.
+          grep -F './pkg/polaris_rhwpdvc.js' site/app.js
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4

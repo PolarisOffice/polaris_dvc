@@ -3,6 +3,14 @@
 Minimal browser UI around `polaris-rhwpdvc-wasm`. Drop an `.hwpx`, edit
 the rule spec, click **Validate**, see the DVC-shaped violation list.
 
+**Live demo:** <https://miles-hs-lee.github.io/polaris_rhwpdvc/>
+
+Published on every push to `main` via `.github/workflows/pages.yml` —
+the workflow builds the WASM, flattens the demo into a self-contained
+`site/` directory, and deploys through GitHub Pages. No branch
+pollution (no `gh-pages` branch); artifact is served straight from
+Actions.
+
 ## Run locally
 
 The page loads the WASM module via ES modules with a relative path
