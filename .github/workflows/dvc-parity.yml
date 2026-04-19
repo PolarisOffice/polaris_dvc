@@ -117,21 +117,27 @@ jobs:
           if (-not $vcpkgRoot) { $vcpkgRoot = 'C:\vcpkg' }
           & "$vcpkgRoot\vcpkg" install jsoncpp:x86-windows --recurse
           $pkg = "$vcpkgRoot\packages\jsoncpp_x86-windows"
+          $include = Join-Path $pkg 'include'
           $includeJson = Join-Path $pkg 'include\json'
           $lib = Join-Path $pkg 'lib'
+          Write-Host "include root: $include"
           Write-Host "include/json: $includeJson"
           Write-Host "lib root:     $lib"
           if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
           if (!(Test-Path $lib)) { throw "missing: $lib" }
-          # Escape backslashes for regex + XML.
-          $incEsc = $includeJson -replace '\\','\\\\'
+          # Replace the single upstream include path with BOTH
+          # `<pkg>/include` and `<pkg>/include/json` — source files
+          # alternate between `#include "json.h"` (needs the nested
+          # path) and `#include "json/json.h"` (needs the parent).
+          $bothInc = "$include;$includeJson"
+          $bothIncEsc = $bothInc -replace '\\','\\\\'
           $libEsc = $lib -replace '\\','\\\\'
           $vcxproj = 'dvc\DVCModel.vcxproj'
           $text = Get-Content $vcxproj -Raw
-          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $incEsc
+          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $bothIncEsc
           $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', $libEsc
-          # Older flavor path used in Debug|Win32 — also patch for safety.
-          $text = $text -replace '\./opensource/jsoncpp/include/json', $incEsc
+          # Defensive: Debug|Win32 flavor.
+          $text = $text -replace '\./opensource/jsoncpp/include/json', $bothIncEsc
           $text = $text -replace '\./opensource/jsoncpp/json_git/lib/Release', $libEsc
           Set-Content -Path $vcxproj -Value $text -NoNewline
           Write-Host "patched AdditionalInclude/LibraryDirectories in $vcxproj"
