@@ -268,4 +268,3 @@ pub const JID_TABLE_END: ErrorCode = ErrorCode::new(3999);
 
 // ---- WORDART ----
 pub const JID_WORDART: ErrorCode = ErrorCode::new(6400);
-
