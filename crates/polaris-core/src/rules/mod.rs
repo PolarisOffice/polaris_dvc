@@ -7,4 +7,4 @@ pub mod loader;
 pub mod schema;
 
 pub use loader::{load_spec, SpecLoadError};
-pub use schema::{CharShape, ParaShape, RuleSpec, TableSpec};
+pub use schema::{BorderRule, CharShape, ParaShape, Permission, RuleSpec, StringList, TableSpec};

@@ -91,25 +91,30 @@ fn check_char_shape(
     char_pr: &CharPr,
     spec: &CharShape,
 ) -> bool {
-    // Font check — compare against the Hangul face registered for this CharPr.
-    if let Some(expected) = spec.font.as_deref() {
-        let actual = ctx
-            .doc
-            .header
-            .face_name(char_pr.font_ref.hangul, "HANGUL")
-            .map(|f| f.face.as_str());
-        if actual != Some(expected) {
-            if !ctx.push(violation_for(
-                paragraph,
-                run,
-                jid::CHAR_SHAPE_FONT,
-                format!(
-                    "expected font '{}', got '{}'",
-                    expected,
-                    actual.unwrap_or("<unknown>")
-                ),
-            )) {
-                return false;
+    // Font check — the Hangul face registered for this CharPr must appear
+    // in the allowlist. Upstream `charshape.font` is an array of allowed
+    // family names; a document value outside the list is a violation.
+    if let Some(allow) = spec.font.as_ref() {
+        if !allow.is_empty() {
+            let actual = ctx
+                .doc
+                .header
+                .face_name(char_pr.font_ref.hangul, "HANGUL")
+                .map(|f| f.face.as_str());
+            let ok = actual.map(|a| allow.contains(a)).unwrap_or(false);
+            if !ok {
+                if !ctx.push(violation_for(
+                    paragraph,
+                    run,
+                    jid::CHAR_SHAPE_FONT,
+                    format!(
+                        "font '{}' not in allowlist {:?}",
+                        actual.unwrap_or("<unknown>"),
+                        allow.0
+                    ),
+                )) {
+                    return false;
+                }
             }
         }
     }
