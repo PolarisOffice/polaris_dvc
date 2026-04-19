@@ -85,29 +85,6 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install VS2017 v141 toolset (if missing)
-        shell: pwsh
-        # windows-latest (windows-2022 / windows-2025 image) ships VS2022
-        # but `v141` may not be pre-installed. Install via vs_installer.
-        run: |
-          $vs = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise'
-          if (Test-Path "$vs\VC\Tools\MSVC") {
-            $v141 = Get-ChildItem "$vs\VC\Tools\MSVC" | Where-Object { $_.Name -like '14.16.*' }
-            if ($null -ne $v141) {
-              Write-Host "v141 already present: $($v141.Name)"
-              exit 0
-            }
-          }
-          Write-Host "Installing v141 platform toolset..."
-          $installer = "$vs\Common7\Tools\vsdevcmd.bat"
-          Start-Process -Wait -NoNewWindow -FilePath 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe' `
-            -ArgumentList @(
-              'modify',
-              '--installPath', $vs,
-              '--add', 'Microsoft.VisualStudio.Component.VC.v141.x86.x64',
-              '--quiet', '--norestart', '--nocache'
-            )
-
       - name: Detect installed Windows SDK
         id: sdk
         shell: pwsh
@@ -126,15 +103,22 @@ jobs:
 
       - name: Build DVCModel + ExampleWindows (x64 Release)
         shell: cmd
-        # Override both `WindowsTargetPlatformVersion` (the upstream
-        # solution pins 10.0.17763.0, which isn't on windows-latest) and
-        # `PlatformToolset` fallback. `/p:RetargetOnBuild=true` also
-        # hints MSBuild to accept the override.
+        # Override three pinned settings that would otherwise require
+        # a VS2017 install:
+        #   - PlatformToolset: upstream pins v141 (VS2017); the runner
+        #     ships v143 (VS2022). v141 can be installed via
+        #     vs_installer but the operation is slow and frequently
+        #     silently no-ops; retargeting is simpler.
+        #   - WindowsTargetPlatformVersion: upstream pins 10.0.17763.0
+        #     which is not on the runner (detected dynamically above).
+        #   - _MSC_VER compat: upstream code is C++14-ish, builds fine
+        #     under v143 in our tests so far.
         run: |
           cd dvc
           msbuild DVCModel.sln ^
             /p:Configuration=Release ^
             /p:Platform=x64 ^
+            /p:PlatformToolset=v143 ^
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
 
