@@ -286,53 +286,96 @@ pub struct ParaShape {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
+/// Table rule spec. **Key layout mirrors upstream `JsonModel.h` 1:1**:
+/// flat kebab-case keys at the same level as `table`, not nested
+/// sub-objects. This matches what DVC.exe accepts so specs are portable
+/// between implementations.
+///
+/// Example (upstream-compatible):
+/// ```json
+/// {
+///   "table": {
+///     "size-width":     { "min": 10000, "max": 50000 },
+///     "margin-left":    141,
+///     "bgfill-type":    1,
+///     "bgfill-facecolor": "#FFFFFF",
+///     "caption-position": "top",
+///     "bggradation-type": 1,
+///     "border": [{ "position": 1, "bordertype": 1 }]
+///   }
+/// }
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default, rename_all = "lowercase")]
+#[serde(default)]
 pub struct TableSpec {
     /// Per-side border rules. Positions 1..=4 conventionally map to
     /// top/bottom/left/right in upstream samples.
     pub border: Option<Vec<BorderRule>>,
-    pub size: Option<TableSizeSpec>,
-    pub margin: Option<TableMarginSpec>,
-    pub outside: Option<TableMarginSpec>,
-    pub bgfill: Option<BgFillSpec>,
-    pub caption: Option<TableCaptionSpec>,
+
+    // ── size-* (JID 3001-3003) ────────────────────────────────────
+    #[serde(rename = "size-width")]
+    pub size_width: Option<Range64>,
+    #[serde(rename = "size-height")]
+    pub size_height: Option<Range64>,
+    #[serde(rename = "fixed")]
+    pub size_fixed: Option<bool>,
+
+    // ── margin-* (JID 3022-3025) — cellMargin/<hp:inMargin> ───────
+    #[serde(rename = "margin-left")]
+    pub margin_left: Option<Range64>,
+    #[serde(rename = "margin-right")]
+    pub margin_right: Option<Range64>,
+    #[serde(rename = "margin-top")]
+    pub margin_top: Option<Range64>,
+    #[serde(rename = "margin-bottom")]
+    pub margin_bottom: Option<Range64>,
+
+    // ── caption-* (JID 3026-3030) ─────────────────────────────────
+    #[serde(rename = "caption-position")]
+    pub caption_position: Option<String>,
+    #[serde(rename = "caption-size")]
+    pub caption_size: Option<Range64>,
+    #[serde(rename = "caption-spacing")]
+    pub caption_spacing: Option<Range64>,
+    #[serde(rename = "caption-socapfullsize")]
+    pub caption_socapfullsize: Option<bool>,
+    #[serde(rename = "caption-linewrap")]
+    pub caption_linewrap: Option<bool>,
+
+    // ── bgfill-* (JID 3037-3040) ──────────────────────────────────
+    #[serde(rename = "bgfill-type")]
+    pub bgfill_type: Option<u32>,
+    #[serde(rename = "bgfill-facecolor")]
+    pub bgfill_facecolor: Option<ColorValue>,
+    #[serde(rename = "bgfill-pattoncolor")]
+    pub bgfill_pattoncolor: Option<ColorValue>,
+    #[serde(rename = "bgfill-pattontype")]
+    pub bgfill_pattontype: Option<String>,
+
+    // ── bggradation-* (JID 3041-3048) ─────────────────────────────
+    #[serde(rename = "bggradation-startcolor")]
+    pub bggradation_startcolor: Option<ColorValue>,
+    #[serde(rename = "bggradation-endcolor")]
+    pub bggradation_endcolor: Option<ColorValue>,
+    #[serde(rename = "bggradation-type")]
+    pub bggradation_type: Option<u32>,
+    #[serde(rename = "bggradation-widthcenter")]
+    pub bggradation_widthcenter: Option<Range64>,
+    #[serde(rename = "bggradation-heightcenter")]
+    pub bggradation_heightcenter: Option<Range64>,
+    #[serde(rename = "bggradation-gradationangle")]
+    pub bggradation_gradationangle: Option<Range64>,
+    #[serde(rename = "bggradation-blurlevel")]
+    pub bggradation_blurlevel: Option<Range64>,
+    #[serde(rename = "bggradation-blurcenter")]
+    pub bggradation_blurcenter: Option<Range64>,
+
+    // ── misc ──────────────────────────────────────────────────────
     #[serde(rename = "treatAsChar")]
     pub treat_as_char: Option<bool>,
     #[serde(rename = "table-in-table")]
     pub table_in_table: Option<bool>,
-    #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
-}
 
-/// Background-fill rule. `type` is the upstream `BGFillType` ordinal
-/// (0=NONE, 1=SOLID, 2=PATTERN, 3=GRADATION, 4=IMAGE). `facecolor`
-/// and `pattoncolor` accept either a decimal/hex integer or a
-/// `#RRGGBB` string for user convenience.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default, rename_all = "lowercase")]
-pub struct BgFillSpec {
-    #[serde(rename = "type")]
-    pub kind: Option<u32>,
-    pub facecolor: Option<ColorValue>,
-    pub pattoncolor: Option<ColorValue>,
-    pub pattontype: Option<String>,
-    #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
-}
-
-/// Caption positioning/sizing rule for tables. Upstream
-/// `JID_TABLE_CAPTION_*` (3026–3030). Caption text position is typically
-/// one of `LEFT_TOP`, `TOP_CENTER`, `RIGHT_TOP`, `LEFT_MIDDLE`, etc.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default, rename_all = "lowercase")]
-pub struct TableCaptionSpec {
-    pub position: Option<String>,
-    pub size: Option<Range64>,
-    pub spacing: Option<Range64>,
-    #[serde(rename = "socapfullsize")]
-    pub so_cap_full_size: Option<bool>,
-    pub linewrap: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -378,30 +421,6 @@ impl Serialize for ColorValue {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_u32(self.0)
     }
-}
-
-/// Table width/height (in HWPUNIT). Both support ranges.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default, rename_all = "lowercase")]
-pub struct TableSizeSpec {
-    pub width: Option<Range64>,
-    pub height: Option<Range64>,
-    #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
-}
-
-/// Per-side table margin spec. Used for both `margin` (inner/cell
-/// margin → `<hp:inMargin>`) and `outside` (outer margin →
-/// `<hp:outside>`).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default, rename_all = "lowercase")]
-pub struct TableMarginSpec {
-    pub left: Option<Range64>,
-    pub right: Option<Range64>,
-    pub top: Option<Range64>,
-    pub bottom: Option<Range64>,
-    #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

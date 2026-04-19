@@ -309,7 +309,7 @@ fn cases() -> Vec<Case> {
                 f
             },
             spec: r#"{
-  "table": { "size": { "width": 30000 } }
+  "table": { "size-width": 30000 }
 }
 "#,
         },
@@ -328,12 +328,10 @@ fn cases() -> Vec<Case> {
             },
             spec: r#"{
   "table": {
-    "margin": {
-      "left":   { "min": 100, "max": 200 },
-      "right":  { "min": 100, "max": 200 },
-      "top":    { "min": 100, "max": 200 },
-      "bottom": { "min": 100, "max": 200 }
-    }
+    "margin-left":   { "min": 100, "max": 200 },
+    "margin-right":  { "min": 100, "max": 200 },
+    "margin-top":    { "min": 100, "max": 200 },
+    "margin-bottom": { "min": 100, "max": 200 }
   }
 }
 "#,
@@ -371,7 +369,7 @@ fn cases() -> Vec<Case> {
                 f
             },
             spec: r#"{
-  "table": { "bgfill": { "type": 1 } }
+  "table": { "bgfill-type": 1 }
 }
 "#,
         },
@@ -398,7 +396,7 @@ fn cases() -> Vec<Case> {
                 f
             },
             spec: r##"{
-  "table": { "bgfill": { "facecolor": "#FFFFFF" } }
+  "table": { "bgfill-facecolor": "#FFFFFF" }
 }
 "##,
         },

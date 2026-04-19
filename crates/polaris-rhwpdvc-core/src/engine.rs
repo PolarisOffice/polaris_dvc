@@ -591,46 +591,45 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
         }
     }
 
-    if let Some(sz) = spec.size.as_ref() {
-        if let Some(r) = sz.width.as_ref() {
-            if r.is_constrained() && !r.matches(table.sz.width as f64) {
-                let v = table_violation(
-                    ctx,
-                    table,
-                    jid::TABLE_SIZE_WIDTH,
-                    format!(
-                        "table {} width {} outside spec {}",
-                        table.id,
-                        table.sz.width,
-                        r.describe()
-                    ),
-                );
-                if !ctx.push(v) {
-                    return false;
-                }
+    // size-width / size-height
+    if let Some(r) = spec.size_width.as_ref() {
+        if r.is_constrained() && !r.matches(table.sz.width as f64) {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_SIZE_WIDTH,
+                format!(
+                    "table {} width {} outside spec {}",
+                    table.id,
+                    table.sz.width,
+                    r.describe()
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
             }
         }
-        if let Some(r) = sz.height.as_ref() {
-            if r.is_constrained() && !r.matches(table.sz.height as f64) {
-                let v = table_violation(
-                    ctx,
-                    table,
-                    jid::TABLE_SIZE_HEIGHT,
-                    format!(
-                        "table {} height {} outside spec {}",
-                        table.id,
-                        table.sz.height,
-                        r.describe()
-                    ),
-                );
-                if !ctx.push(v) {
-                    return false;
-                }
+    }
+    if let Some(r) = spec.size_height.as_ref() {
+        if r.is_constrained() && !r.matches(table.sz.height as f64) {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_SIZE_HEIGHT,
+                format!(
+                    "table {} height {} outside spec {}",
+                    table.id,
+                    table.sz.height,
+                    r.describe()
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
             }
         }
     }
 
-    if let Some(Some(expected)) = spec.treat_as_char.map(Some) {
+    if let Some(expected) = spec.treat_as_char {
         if table.pos.treat_as_char != expected {
             let v = table_violation(
                 ctx,
@@ -647,59 +646,54 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
         }
     }
 
-    // Margins use <hp:inMargin> for the inner/cell margin (upstream "margin")
-    // and <hp:outside> for the outer table margin.
-    if let Some(m) = spec.margin.as_ref() {
-        if !check_margin_side(
-            ctx,
-            table,
-            jid::TABLE_MARGIN_LEFT,
-            "margin.left",
-            m.left.as_ref(),
-            table.in_margin.left,
-        ) {
-            return false;
-        }
-        if !check_margin_side(
-            ctx,
-            table,
-            jid::TABLE_MARGIN_RIGHT,
-            "margin.right",
-            m.right.as_ref(),
-            table.in_margin.right,
-        ) {
-            return false;
-        }
-        if !check_margin_side(
-            ctx,
-            table,
-            jid::TABLE_MARGIN_TOP,
-            "margin.top",
-            m.top.as_ref(),
-            table.in_margin.top,
-        ) {
-            return false;
-        }
-        if !check_margin_side(
-            ctx,
-            table,
-            jid::TABLE_MARGIN_BOTTOM,
-            "margin.bottom",
-            m.bottom.as_ref(),
-            table.in_margin.bottom,
-        ) {
-            return false;
-        }
+    // margin-left/right/top/bottom — <hp:inMargin> (cellMargin).
+    if !check_margin_side(
+        ctx,
+        table,
+        jid::TABLE_MARGIN_LEFT,
+        "margin-left",
+        spec.margin_left.as_ref(),
+        table.in_margin.left,
+    ) {
+        return false;
+    }
+    if !check_margin_side(
+        ctx,
+        table,
+        jid::TABLE_MARGIN_RIGHT,
+        "margin-right",
+        spec.margin_right.as_ref(),
+        table.in_margin.right,
+    ) {
+        return false;
+    }
+    if !check_margin_side(
+        ctx,
+        table,
+        jid::TABLE_MARGIN_TOP,
+        "margin-top",
+        spec.margin_top.as_ref(),
+        table.in_margin.top,
+    ) {
+        return false;
+    }
+    if !check_margin_side(
+        ctx,
+        table,
+        jid::TABLE_MARGIN_BOTTOM,
+        "margin-bottom",
+        spec.margin_bottom.as_ref(),
+        table.in_margin.bottom,
+    ) {
+        return false;
     }
 
-    // bgfill checks live on the referenced <hh:borderFill>. Same lookup
-    // as borders — if the borderFill is missing we silently skip (the
-    // document is malformed, but there's nothing for us to compare).
-    if let Some(bgspec) = spec.bgfill.as_ref() {
-        if let Some(bf) = ctx.doc.header.border_fill(table.border_fill_id_ref) {
-            if !check_bgfill(ctx, table, &bf.fill, bgspec) {
-                return false;
-            }
+    // bgfill-* and bggradation-* live on the referenced <hh:borderFill>.
+    // Same lookup as borders — if the borderFill is missing we silently
+    // skip (the document is malformed, but there's nothing to compare).
+    if let Some(bf) = ctx.doc.header.border_fill(table.border_fill_id_ref) {
+        if !check_bgfill(ctx, table, &bf.fill, spec) {
+            return false;
         }
     }
 
@@ -722,13 +716,16 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
     true
 }
 
+/// `bgfill-*` checkers. Reads flat `spec.bgfill_*` fields and compares
+/// against the referenced borderFill's `Fill`. Skips silently when the
+/// doc has no fill information.
 fn check_bgfill(
     ctx: &mut Ctx,
     table: &Table,
     fill: &polaris_rhwpdvc_hwpx::Fill,
-    spec: &crate::rules::schema::BgFillSpec,
+    spec: &TableSpec,
 ) -> bool {
-    if let Some(expected) = spec.kind {
+    if let Some(expected) = spec.bgfill_type {
         let actual = fill.ordinal();
         if actual != expected {
             let v = table_violation(
@@ -736,7 +733,7 @@ fn check_bgfill(
                 table,
                 jid::TABLE_BGFILL_TYPE,
                 format!(
-                    "table {} bgfill type {} != spec {}",
+                    "table {} bgfill-type {} != spec {}",
                     table.id, actual, expected
                 ),
             );
@@ -745,7 +742,7 @@ fn check_bgfill(
             }
         }
     }
-    if let Some(expected) = spec.facecolor.as_ref() {
+    if let Some(expected) = spec.bgfill_facecolor.as_ref() {
         if let Some(actual_hex) = fill.face_color_hex() {
             if let Some(actual) = decode_hex_color(actual_hex) {
                 if actual != expected.0 {
@@ -754,7 +751,7 @@ fn check_bgfill(
                         table,
                         jid::TABLE_BGFILL_FACECOLOR,
                         format!(
-                            "table {} bgfill facecolor {:#x} != spec {:#x}",
+                            "table {} bgfill-facecolor {:#x} != spec {:#x}",
                             table.id, actual, expected.0
                         ),
                     );
@@ -765,7 +762,7 @@ fn check_bgfill(
             }
         }
     }
-    if let Some(expected) = spec.pattoncolor.as_ref() {
+    if let Some(expected) = spec.bgfill_pattoncolor.as_ref() {
         if let Some(actual_hex) = fill.patton_color_hex() {
             if let Some(actual) = decode_hex_color(actual_hex) {
                 if actual != expected.0 {
@@ -774,7 +771,7 @@ fn check_bgfill(
                         table,
                         jid::TABLE_BGFILL_PATTONCOLOR,
                         format!(
-                            "table {} bgfill pattoncolor {:#x} != spec {:#x}",
+                            "table {} bgfill-pattoncolor {:#x} != spec {:#x}",
                             table.id, actual, expected.0
                         ),
                     );
@@ -785,7 +782,7 @@ fn check_bgfill(
             }
         }
     }
-    if let Some(expected) = spec.pattontype.as_deref() {
+    if let Some(expected) = spec.bgfill_pattontype.as_deref() {
         if let Some(actual) = fill.patton_type() {
             if !actual.eq_ignore_ascii_case(expected) {
                 let v = table_violation(
@@ -793,7 +790,7 @@ fn check_bgfill(
                     table,
                     jid::TABLE_BGFILL_PATTONTYPE,
                     format!(
-                        "table {} bgfill pattontype \"{}\" != spec \"{}\"",
+                        "table {} bgfill-pattontype \"{}\" != spec \"{}\"",
                         table.id, actual, expected
                     ),
                 );

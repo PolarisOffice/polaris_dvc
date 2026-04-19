@@ -22,7 +22,7 @@ const PRESETS = {
   table: {
     table: {
       border: [{ position: 1, bordertype: 1 }],
-      bgfill: { type: 1 },
+      "bgfill-type": 1,
     },
   },
   all: {
@@ -69,7 +69,11 @@ function renderResults(list) {
     container.innerHTML = `
       <div class="results-summary">
         <span class="count ok">0 violations — document matches the spec.</span>
-      </div>`;
+      </div>
+      <details class="raw" open>
+        <summary>Raw JSON (DVC-shaped)</summary>
+        <pre>${escapeHtml(JSON.stringify(list, null, 2))}</pre>
+      </details>`;
     return;
   }
 
