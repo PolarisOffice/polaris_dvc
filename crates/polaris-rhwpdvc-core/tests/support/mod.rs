@@ -254,7 +254,6 @@ pub struct FixRun {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[allow(dead_code)] // Some variants gain golden cases in follow-up commits.
 pub enum FixRunScope {
     #[default]
     None,

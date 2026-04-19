@@ -681,6 +681,43 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // Footnote scope tracking. Run inside <hp:footnote>; fixture
+            // bold=true vs spec bold=false fires 1009. Run gets
+            // `is_in_footnote=true` internally, but upstream has no JID
+            // surfacing that flag, so expected.json carries the same
+            // violation as a body-text run would — the check still fires
+            // (footnote text is validated), which is the parity contract.
+            name: "39_footnote_scope_bold_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].bold = true;
+                f.paragraphs[0].runs[0].scope = FixRunScope::InFootnote;
+                f
+            },
+            spec: r#"{
+  "charshape": { "bold": false }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Endnote scope — same shape as the footnote case. Confirms
+            // <hp:endnote> is also recognized by the parser's scope stack
+            // and the run still participates in rule checking.
+            name: "40_endnote_scope_bold_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].bold = true;
+                f.paragraphs[0].runs[0].scope = FixRunScope::InEndnote;
+                f
+            },
+            spec: r#"{
+  "charshape": { "bold": false }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Shape scope tracking. Run is wrapped in <hp:shapeObject>
             // so the parser sets `Run.is_in_shape=true`, which the
             // engine propagates to `ViolationRecord.is_in_shape`.
