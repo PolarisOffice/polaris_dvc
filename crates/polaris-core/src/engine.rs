@@ -337,6 +337,39 @@ fn check_char_shape(
         }
     }
 
+    if let Some(expected) = spec.ratio {
+        if (char_pr.ratio_hangul - expected).abs() > f64::EPSILON {
+            let v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::CHAR_SHAPE_RATIO,
+                format!("expected ratio {}, got {}", expected, char_pr.ratio_hangul),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    if let Some(expected) = spec.spacing {
+        if (char_pr.spacing_hangul - expected).abs() > f64::EPSILON {
+            let v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::CHAR_SHAPE_SPACING,
+                format!(
+                    "expected spacing {}, got {}",
+                    expected, char_pr.spacing_hangul
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
     true
 }
 
@@ -348,19 +381,82 @@ fn check_para_shape(
 ) -> bool {
     if let Some(expected) = spec.linespacingvalue {
         if (para_pr.line_spacing_value - expected).abs() > f64::EPSILON {
-            let page_no = ctx.page_no;
-            let line_no = ctx.line_no;
-            let v = ViolationRecord {
-                para_pr_id_ref: paragraph.para_pr_id_ref,
-                page_no,
-                line_no,
-                error_code: jid::PARA_SHAPE_LINESPACING,
-                error_string: format!(
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_LINESPACINGVALUE,
+                format!(
                     "expected line spacing {}, got {}",
                     expected, para_pr.line_spacing_value
                 ),
-                ..ViolationRecord::new(jid::PARA_SHAPE_LINESPACING)
-            };
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    if let Some(expected) = spec.spacing_paraup {
+        if (para_pr.margin_prev - expected).abs() > f64::EPSILON {
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_SPACING_PARAUP,
+                format!(
+                    "expected spacing-paraup {}, got {}",
+                    expected, para_pr.margin_prev
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    if let Some(expected) = spec.spacing_parabottom {
+        if (para_pr.margin_next - expected).abs() > f64::EPSILON {
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_SPACING_PARABOTTOM,
+                format!(
+                    "expected spacing-parabottom {}, got {}",
+                    expected, para_pr.margin_next
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    if let Some(expected) = spec.indent {
+        // `indent` checks the first-line positive indent (margin_intent > 0).
+        let actual = para_pr.margin_intent.max(0.0);
+        if (actual - expected).abs() > f64::EPSILON {
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_INDENT,
+                format!("expected indent {}, got {}", expected, actual),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    if let Some(expected) = spec.outdent {
+        // `outdent` mirrors `indent` with a sign flip: negative margin_intent
+        // counts as outdent magnitude.
+        let actual = (-para_pr.margin_intent).max(0.0);
+        if (actual - expected).abs() > f64::EPSILON {
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_OUTDENT,
+                format!("expected outdent {}, got {}", expected, actual),
+            );
             if !ctx.push(v) {
                 return false;
             }
@@ -369,19 +465,15 @@ fn check_para_shape(
 
     if let Some(expected) = spec.align.as_deref() {
         if !para_pr.align_horizontal.eq_ignore_ascii_case(expected) {
-            let page_no = ctx.page_no;
-            let line_no = ctx.line_no;
-            let v = ViolationRecord {
-                para_pr_id_ref: paragraph.para_pr_id_ref,
-                page_no,
-                line_no,
-                error_code: jid::PARA_SHAPE_ALIGN,
-                error_string: format!(
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_ALIGN,
+                format!(
                     "expected align {}, got {}",
                     expected, para_pr.align_horizontal
                 ),
-                ..ViolationRecord::new(jid::PARA_SHAPE_ALIGN)
-            };
+            );
             if !ctx.push(v) {
                 return false;
             }
@@ -552,6 +644,24 @@ fn table_violation(
     }
 }
 
+/// Paragraph-level violation (no specific run). Stamps the current
+/// page/line counter so downstream tooling can locate the paragraph.
+fn para_violation(
+    ctx: &Ctx,
+    paragraph: &Paragraph,
+    code: ErrorCode,
+    diagnostic: String,
+) -> ViolationRecord {
+    ViolationRecord {
+        para_pr_id_ref: paragraph.para_pr_id_ref,
+        page_no: ctx.page_no,
+        line_no: ctx.line_no,
+        error_code: code,
+        error_string: diagnostic,
+        ..ViolationRecord::new(code)
+    }
+}
+
 fn violation_for(
     ctx: &Ctx,
     paragraph: &Paragraph,
@@ -671,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn linespacing_mismatch_emits_2050() {
+    fn linespacing_mismatch_emits_2008() {
         let doc = make_doc(
             bata_char_pr(1000),
             ParaPr {
@@ -685,7 +795,7 @@ mod tests {
             serde_json::from_str(r#"{"parashape":{"linespacingvalue":160}}"#).unwrap();
         let r = validate(&doc, &spec, &EngineOptions::default());
         assert_eq!(r.violations.len(), 1);
-        assert_eq!(r.violations[0].error_code.value(), 2050);
+        assert_eq!(r.violations[0].error_code.value(), 2008);
     }
 
     #[test]

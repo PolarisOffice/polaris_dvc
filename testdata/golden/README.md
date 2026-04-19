@@ -32,3 +32,5 @@ Current cases:
 | `10_macro_forbidden` | manifest has `Scripts/macros.js` vs spec `macro.permission:false` → `ErrorCode: 7001` (document-level, empty errorText) |
 | `11_table_border_type_mismatch` | table borderFill has DASH top vs spec `{position:1, bordertype:1}` (SOLID) → `ErrorCode: 3033` (`IsInTable: true`) |
 | `12_lone_table_with_table_in_table_rule` | single top-level table + spec `table-in-table:false` → empty array (regression anchor) |
+| `13_charshape_ratio_mismatch` | charPr ratio 90 vs spec `ratio:100` → `ErrorCode: 1007` |
+| `14_parashape_indent_mismatch` | paraPr margin-intent 500 vs spec `indent:0` → `ErrorCode: 2005` |

@@ -82,6 +82,23 @@ pub struct FixCharPr {
     pub height: u32, // 1/100 pt (10pt → 1000)
     pub bold: bool,
     pub italic: bool,
+    /// `<hh:ratio hangul="…">` (percentage). Default: 100.
+    pub ratio: f64,
+    /// `<hh:spacing hangul="…">` (HWPUNIT). Default: 0.
+    pub spacing: f64,
+}
+
+impl Default for FixCharPr {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            height: 1000,
+            bold: false,
+            italic: false,
+            ratio: 100.0,
+            spacing: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +106,24 @@ pub struct FixParaPr {
     pub id: u32,
     pub align: String, // e.g., "JUSTIFY"
     pub line_spacing_value: f64,
+    pub margin_prev: f64,
+    pub margin_next: f64,
+    pub margin_intent: f64,
+    pub margin_left: f64,
+}
+
+impl Default for FixParaPr {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            align: "JUSTIFY".into(),
+            line_spacing_value: 160.0,
+            margin_prev: 0.0,
+            margin_next: 0.0,
+            margin_intent: 0.0,
+            margin_left: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -127,17 +162,8 @@ impl Fixture {
     pub fn baseline() -> Self {
         Self {
             hangul_face: "바탕".into(),
-            char_prs: vec![FixCharPr {
-                id: 0,
-                height: 1000,
-                bold: false,
-                italic: false,
-            }],
-            para_prs: vec![FixParaPr {
-                id: 0,
-                align: "JUSTIFY".into(),
-                line_spacing_value: 160.0,
-            }],
+            char_prs: vec![FixCharPr::default()],
+            para_prs: vec![FixParaPr::default()],
             border_fills: vec![FixBorderFill::solid_default(1)],
             paragraphs: vec![FixParagraph {
                 para_pr_id_ref: 0,
@@ -293,15 +319,18 @@ impl Fixture {
                  symMark=\"NONE\" borderFillIDRef=\"1\">\
                  <hh:fontRef hangul=\"0\" latin=\"0\" hanja=\"0\" japanese=\"0\" \
                  other=\"0\" symbol=\"0\" user=\"0\"/>\
-                 <hh:ratio hangul=\"100\" latin=\"100\" hanja=\"100\" \
-                 japanese=\"100\" other=\"100\" symbol=\"100\" user=\"100\"/>\
-                 <hh:spacing hangul=\"0\" latin=\"0\" hanja=\"0\" japanese=\"0\" \
-                 other=\"0\" symbol=\"0\" user=\"0\"/>\
+                 <hh:ratio hangul=\"{r}\" latin=\"{r}\" hanja=\"{r}\" \
+                 japanese=\"{r}\" other=\"{r}\" symbol=\"{r}\" user=\"{r}\"/>\
+                 <hh:spacing hangul=\"{sp}\" latin=\"{sp}\" hanja=\"{sp}\" \
+                 japanese=\"{sp}\" other=\"{sp}\" symbol=\"{sp}\" user=\"{sp}\"/>\
                  <hh:relSz hangul=\"100\" latin=\"100\" hanja=\"100\" \
                  japanese=\"100\" other=\"100\" symbol=\"100\" user=\"100\"/>\
                  <hh:offset hangul=\"0\" latin=\"0\" hanja=\"0\" japanese=\"0\" \
                  other=\"0\" symbol=\"0\" user=\"0\"/>",
-                c.id, c.height
+                c.id,
+                c.height,
+                r = c.ratio,
+                sp = c.spacing,
             ));
             if c.bold {
                 s.push_str("<hh:bold/>");
@@ -336,17 +365,23 @@ impl Fixture {
                  keepWithNext=\"0\" keepLines=\"0\" pageBreakBefore=\"0\" \
                  lineWrap=\"BREAK\"/>\
                  <hh:margin>\
-                 <hc:intent value=\"0\" unit=\"HWPUNIT\"/>\
-                 <hc:left value=\"0\" unit=\"HWPUNIT\"/>\
+                 <hc:intent value=\"{intent}\" unit=\"HWPUNIT\"/>\
+                 <hc:left value=\"{left}\" unit=\"HWPUNIT\"/>\
                  <hc:right value=\"0\" unit=\"HWPUNIT\"/>\
-                 <hc:prev value=\"0\" unit=\"HWPUNIT\"/>\
-                 <hc:next value=\"0\" unit=\"HWPUNIT\"/>\
+                 <hc:prev value=\"{prev}\" unit=\"HWPUNIT\"/>\
+                 <hc:next value=\"{next}\" unit=\"HWPUNIT\"/>\
                  </hh:margin>\
-                 <hh:lineSpacing type=\"PERCENT\" value=\"{}\" unit=\"HWPUNIT\"/>\
+                 <hh:lineSpacing type=\"PERCENT\" value=\"{ls}\" unit=\"HWPUNIT\"/>\
                  <hh:border borderFillIDRef=\"1\" offsetLeft=\"0\" offsetRight=\"0\" \
                  offsetTop=\"0\" offsetBottom=\"0\" connect=\"0\" ignoreMargin=\"0\"/>\
                  </hh:paraPr>",
-                p.id, p.align, p.line_spacing_value
+                p.id,
+                p.align,
+                ls = p.line_spacing_value,
+                intent = p.margin_intent,
+                left = p.margin_left,
+                prev = p.margin_prev,
+                next = p.margin_next,
             ));
         }
         s.push_str("</hh:paraProperties>");

@@ -115,18 +115,21 @@ fn cases() -> Vec<Case> {
                             height: 1000,
                             bold: false,
                             italic: false,
+                            ..FixCharPr::default()
                         },
                         FixCharPr {
                             id: 1,
                             height: 1400,
                             bold: true,
                             italic: false,
+                            ..FixCharPr::default()
                         },
                     ],
                     para_prs: vec![FixParaPr {
                         id: 0,
                         align: "JUSTIFY".into(),
                         line_spacing_value: 160.0,
+                        ..FixParaPr::default()
                     }],
                     border_fills: vec![FixBorderFill::solid_default(1)],
                     paragraphs: vec![
@@ -218,6 +221,30 @@ fn cases() -> Vec<Case> {
       { "position": 1, "bordertype": 1 }
     ]
   }
+}
+"#,
+        },
+        Case {
+            name: "13_charshape_ratio_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].ratio = 90.0; // spec wants 100
+                f
+            },
+            spec: r#"{
+  "charshape": { "ratio": 100 }
+}
+"#,
+        },
+        Case {
+            name: "14_parashape_indent_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.para_prs[0].margin_intent = 500.0; // spec wants 0
+                f
+            },
+            spec: r#"{
+  "parashape": { "indent": 0 }
 }
 "#,
         },

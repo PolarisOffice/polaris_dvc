@@ -65,6 +65,12 @@ pub struct CharPr {
     pub height: u32,
     pub text_color: String,
     pub font_ref: FontRef,
+    /// `<hh:ratio hangul="…">` — percentage width scaling per language.
+    /// Only the Hangul component is stored; DVC's `charshape.ratio` rule
+    /// uses the representative language's value.
+    pub ratio_hangul: f64,
+    /// `<hh:spacing hangul="…">` — extra inter-character spacing.
+    pub spacing_hangul: f64,
     pub bold: bool,
     pub italic: bool,
     pub underline: Option<Underline>,
@@ -115,6 +121,17 @@ pub struct ParaPr {
     pub align_horizontal: String,
     pub line_spacing_type: String,
     pub line_spacing_value: f64,
+    /// `<hh:margin><hc:prev value=…></hh:margin>` — spacing above the
+    /// paragraph (`spacing-paraup` in DVC rule specs).
+    pub margin_prev: f64,
+    /// `<hh:margin><hc:next value=…></hh:margin>` —
+    /// spacing below (`spacing-parabottom`).
+    pub margin_next: f64,
+    /// `<hh:margin><hc:intent value=…></hh:margin>` — first-line indent
+    /// when positive, outdent when negative. Drives `indent` / `outdent`.
+    pub margin_intent: f64,
+    /// `<hh:margin><hc:left value=…></hh:margin>` — body indent.
+    pub margin_left: f64,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

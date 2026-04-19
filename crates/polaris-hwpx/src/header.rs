@@ -76,6 +76,16 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                             c.font_ref = fr;
                         }
                     }
+                    "ratio" if cur_char.is_some() => {
+                        if let Some(c) = cur_char.as_mut() {
+                            c.ratio_hangul = attr_f64(&attrs, "hangul").unwrap_or(0.0);
+                        }
+                    }
+                    "spacing" if cur_char.is_some() => {
+                        if let Some(c) = cur_char.as_mut() {
+                            c.spacing_hangul = attr_f64(&attrs, "hangul").unwrap_or(0.0);
+                        }
+                    }
                     "bold" => {
                         if let Some(c) = cur_char.as_mut() {
                             c.bold = true;
@@ -153,6 +163,30 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                         if let Some(p) = cur_para.as_mut() {
                             p.line_spacing_type = attr(&attrs, "type").unwrap_or_default();
                             p.line_spacing_value = attr_f64(&attrs, "value").unwrap_or(0.0);
+                        }
+                    }
+                    // `<hh:margin>` children live under paraPr. `intent` is
+                    // the first-line indent (positive=indent, negative=outdent);
+                    // `prev`/`next` are the before/after spacing; `left` is
+                    // the body indent. All expressed in HWPUNIT.
+                    "intent" if cur_para.is_some() => {
+                        if let Some(p) = cur_para.as_mut() {
+                            p.margin_intent = attr_f64(&attrs, "value").unwrap_or(0.0);
+                        }
+                    }
+                    "left" if cur_para.is_some() => {
+                        if let Some(p) = cur_para.as_mut() {
+                            p.margin_left = attr_f64(&attrs, "value").unwrap_or(0.0);
+                        }
+                    }
+                    "prev" if cur_para.is_some() => {
+                        if let Some(p) = cur_para.as_mut() {
+                            p.margin_prev = attr_f64(&attrs, "value").unwrap_or(0.0);
+                        }
+                    }
+                    "next" if cur_para.is_some() => {
+                        if let Some(p) = cur_para.as_mut() {
+                            p.margin_next = attr_f64(&attrs, "value").unwrap_or(0.0);
                         }
                     }
                     "style" => {

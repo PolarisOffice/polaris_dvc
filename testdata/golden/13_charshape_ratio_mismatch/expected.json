@@ -2,10 +2,10 @@
   {
     "CharIDRef": 0,
     "ParaPrIDRef": 0,
-    "errorText": "",
+    "errorText": "안녕",
     "PageNo": 1,
     "LineNo": 1,
-    "ErrorCode": 2008,
+    "ErrorCode": 1007,
     "TableID": 0,
     "IsInTable": false,
     "IsInTableInTable": false,

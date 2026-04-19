@@ -44,7 +44,10 @@ impl ErrorCode {
             1011 => "Underline setting does not match specification",
             1012 => "Strikeout setting does not match specification",
             2001 => "Paragraph alignment does not match specification",
-            2050 => "Line spacing out of specification range",
+            2007 => "Line spacing type does not match specification",
+            2008 => "Line spacing value does not match specification",
+            2009 => "Paragraph top spacing does not match specification",
+            2010 => "Paragraph bottom spacing does not match specification",
             3502 => "Style usage is not permitted",
             6901 => "Hyperlink usage is not permitted",
             7001 => "Macro usage is not permitted",
@@ -60,13 +63,21 @@ impl ErrorCode {
 pub mod jid {
     use super::ErrorCode;
     pub const CHAR_SHAPE_FONTSIZE: ErrorCode = ErrorCode::new(1001);
+    pub const CHAR_SHAPE_LANGSET: ErrorCode = ErrorCode::new(1002);
     pub const CHAR_SHAPE_FONT: ErrorCode = ErrorCode::new(1004);
+    pub const CHAR_SHAPE_RATIO: ErrorCode = ErrorCode::new(1007);
+    pub const CHAR_SHAPE_SPACING: ErrorCode = ErrorCode::new(1008);
     pub const CHAR_SHAPE_BOLD: ErrorCode = ErrorCode::new(1009);
     pub const CHAR_SHAPE_ITALIC: ErrorCode = ErrorCode::new(1010);
     pub const CHAR_SHAPE_UNDERLINE: ErrorCode = ErrorCode::new(1011);
     pub const CHAR_SHAPE_STRIKEOUT: ErrorCode = ErrorCode::new(1012);
     pub const PARA_SHAPE_ALIGN: ErrorCode = ErrorCode::new(2001);
-    pub const PARA_SHAPE_LINESPACING: ErrorCode = ErrorCode::new(2050);
+    pub const PARA_SHAPE_INDENT: ErrorCode = ErrorCode::new(2005);
+    pub const PARA_SHAPE_OUTDENT: ErrorCode = ErrorCode::new(2006);
+    pub const PARA_SHAPE_LINESPACING_TYPE: ErrorCode = ErrorCode::new(2007);
+    pub const PARA_SHAPE_LINESPACINGVALUE: ErrorCode = ErrorCode::new(2008);
+    pub const PARA_SHAPE_SPACING_PARAUP: ErrorCode = ErrorCode::new(2009);
+    pub const PARA_SHAPE_SPACING_PARABOTTOM: ErrorCode = ErrorCode::new(2010);
     pub const STYLE_PERMISSION: ErrorCode = ErrorCode::new(3502);
     pub const HYPERLINK_PERMISSION: ErrorCode = ErrorCode::new(6901);
     pub const MACRO_PERMISSION: ErrorCode = ErrorCode::new(7001);
