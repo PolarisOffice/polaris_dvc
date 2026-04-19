@@ -29,6 +29,9 @@ pub struct Fixture {
     pub char_prs: Vec<FixCharPr>,
     pub para_prs: Vec<FixParaPr>,
     pub paragraphs: Vec<FixParagraph>,
+    /// Add a `<opf:item href="Scripts/macros.js" …>` entry so upstream
+    /// macro detection (manifest-scan for `.js`) fires on this document.
+    pub has_macro: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,9 @@ pub struct FixParaPr {
 #[derive(Debug, Clone)]
 pub struct FixParagraph {
     pub para_pr_id_ref: u32,
+    /// Non-zero value sets `styleIDRef` on the `<hp:p>` — drives the
+    /// `style.permission` rule.
+    pub style_id_ref: u32,
     pub runs: Vec<FixRun>,
 }
 
@@ -56,6 +62,10 @@ pub struct FixParagraph {
 pub struct FixRun {
     pub char_pr_id_ref: u32,
     pub text: String,
+    /// When true, the emitted run is wrapped in
+    /// `<hp:fieldBegin type="HYPERLINK"> … <hp:fieldEnd/>` so the parser
+    /// surfaces it as a hyperlinked run for the permission rule.
+    pub hyperlink: bool,
 }
 
 impl Fixture {
@@ -76,11 +86,14 @@ impl Fixture {
             }],
             paragraphs: vec![FixParagraph {
                 para_pr_id_ref: 0,
+                style_id_ref: 0,
                 runs: vec![FixRun {
                     char_pr_id_ref: 0,
                     text: "안녕".into(),
+                    hyperlink: false,
                 }],
             }],
+            has_macro: false,
         }
     }
 
@@ -111,7 +124,15 @@ impl Fixture {
             zip.write_all(self.preview_text().as_bytes()).unwrap();
 
             zip.start_file("Contents/content.hpf", stored).unwrap();
-            zip.write_all(CONTENT_HPF.as_bytes()).unwrap();
+            zip.write_all(self.content_hpf().as_bytes()).unwrap();
+
+            if self.has_macro {
+                // Minimal JS asset — presence in the manifest is what
+                // upstream macro detection checks for, content doesn't
+                // need to be valid JavaScript.
+                zip.start_file("Scripts/macros.js", stored).unwrap();
+                zip.write_all(b"// polaris fixture macro stub\n").unwrap();
+            }
 
             zip.start_file("Contents/header.xml", stored).unwrap();
             zip.write_all(self.header_xml().as_bytes()).unwrap();
@@ -130,6 +151,19 @@ impl Fixture {
             .flat_map(|p| p.runs.iter().map(|r| r.text.as_str()))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn content_hpf(&self) -> String {
+        let mut s = String::with_capacity(1024);
+        s.push_str(CONTENT_HPF_PREFIX);
+        if self.has_macro {
+            s.push_str(
+                "<opf:item id=\"macros\" href=\"Scripts/macros.js\" \
+                 media-type=\"application/javascript\"/>",
+            );
+        }
+        s.push_str(CONTENT_HPF_SUFFIX);
+        s
     }
 
     fn header_xml(&self) -> String {
@@ -292,11 +326,21 @@ impl Fixture {
         let mut cumulative_vert: i64 = 0;
         for (pi, p) in self.paragraphs.iter().enumerate() {
             s.push_str(&format!(
-                "<hp:p id=\"{}\" paraPrIDRef=\"{}\" styleIDRef=\"0\" \
+                "<hp:p id=\"{}\" paraPrIDRef=\"{}\" styleIDRef=\"{}\" \
                  pageBreak=\"0\" columnBreak=\"0\" merged=\"0\">",
-                pi, p.para_pr_id_ref
+                pi, p.para_pr_id_ref, p.style_id_ref
             ));
             for (ri, r) in p.runs.iter().enumerate() {
+                // <hp:fieldBegin> opens a hyperlink scope around the run
+                // when requested. The matching fieldEnd closes it right
+                // after the text so the scope covers exactly this run.
+                if r.hyperlink {
+                    s.push_str(
+                        "<hp:fieldBegin type=\"HYPERLINK\" name=\"hyp\" \
+                         editable=\"1\" dirty=\"0\"><hp:parameters count=\"0\"/>\
+                         </hp:fieldBegin>",
+                    );
+                }
                 s.push_str(&format!("<hp:run charPrIDRef=\"{}\">", r.char_pr_id_ref));
                 // <hp:secPr> belongs in the very first run of the first paragraph.
                 if pi == 0 && ri == 0 {
@@ -304,6 +348,9 @@ impl Fixture {
                 }
                 s.push_str(&format!("<hp:t>{}</hp:t>", xml_escape(&r.text)));
                 s.push_str("</hp:run>");
+                if r.hyperlink {
+                    s.push_str("<hp:fieldEnd fieldType=\"HYPERLINK\" fieldName=\"hyp\"/>");
+                }
             }
             // Single lineseg per paragraph, vertpos accumulating across
             // paragraphs so the 2nd+ paragraph isn't interpreted as a new
@@ -388,7 +435,7 @@ const MANIFEST_XML: &str = concat!(
     "<odf:manifest xmlns:odf=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\"/>"
 );
 
-const CONTENT_HPF: &str = concat!(
+const CONTENT_HPF_PREFIX: &str = concat!(
     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>",
     "<opf:package ",
     "xmlns:ha=\"http://www.hancom.co.kr/hwpml/2011/app\" ",
@@ -413,6 +460,9 @@ const CONTENT_HPF: &str = concat!(
     "<opf:item id=\"header\" href=\"Contents/header.xml\" media-type=\"application/xml\"/>",
     "<opf:item id=\"section0\" href=\"Contents/section0.xml\" media-type=\"application/xml\"/>",
     "<opf:item id=\"settings\" href=\"settings.xml\" media-type=\"application/xml\"/>",
+);
+
+const CONTENT_HPF_SUFFIX: &str = concat!(
     "</opf:manifest>",
     "<opf:spine>",
     "<opf:itemref idref=\"header\"/>",

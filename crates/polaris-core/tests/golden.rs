@@ -131,23 +131,65 @@ fn cases() -> Vec<Case> {
                     paragraphs: vec![
                         FixParagraph {
                             para_pr_id_ref: 0,
+                            style_id_ref: 0,
                             runs: vec![FixRun {
                                 char_pr_id_ref: 0,
                                 text: "ok".into(),
+                                hyperlink: false,
                             }],
                         },
                         FixParagraph {
                             para_pr_id_ref: 0,
+                            style_id_ref: 0,
                             runs: vec![FixRun {
                                 char_pr_id_ref: 1,
                                 text: "bad".into(),
+                                hyperlink: false,
                             }],
                         },
                     ],
+                    has_macro: false,
                 }
             },
             spec: r#"{
   "charshape": { "fontsize": 10, "bold": false }
+}
+"#,
+        },
+        Case {
+            name: "08_style_forbidden",
+            build: || {
+                let mut f = Fixture::baseline();
+                // Paragraph references a custom style — permission rule fires.
+                f.paragraphs[0].style_id_ref = 7;
+                f
+            },
+            spec: r#"{
+  "style": { "permission": false }
+}
+"#,
+        },
+        Case {
+            name: "09_hyperlink_forbidden",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].runs[0].hyperlink = true;
+                f
+            },
+            spec: r#"{
+  "hyperlink": { "permission": false }
+}
+"#,
+        },
+        Case {
+            name: "10_macro_forbidden",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.has_macro = true;
+                f
+            },
+            spec: r#"{
+  "macro": { "permission": false }
 }
 "#,
         },

@@ -17,6 +17,9 @@ pub struct Header {
     pub char_shapes: Vec<CharPr>,
     pub para_shapes: Vec<ParaPr>,
     pub styles: Vec<Style>,
+    /// True when the document contains any macro asset (populated from the
+    /// OPF manifest during `open_bytes` — the header XML itself doesn't
+    /// carry this signal). See `container::Manifest::has_macro`.
     pub has_macro: bool,
 }
 
@@ -130,6 +133,10 @@ pub struct Run {
     /// (`<hp:ctrl>`) are skipped at this layer — they're routed to their
     /// own validators in higher layers.
     pub text: String,
+    /// True when this run sits between a `<hp:fieldBegin type="HYPERLINK">`
+    /// and the matching `<hp:fieldEnd>`. Mirrors upstream `RunTypeInfo::
+    /// isHyperlink` which drives the hyperlink-permission rule.
+    pub is_hyperlink: bool,
 }
 
 impl Header {

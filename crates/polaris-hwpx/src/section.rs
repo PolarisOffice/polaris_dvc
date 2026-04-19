@@ -23,6 +23,12 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
     let mut cur_para: Option<Paragraph> = None;
     let mut cur_run: Option<Run> = None;
     let mut in_text = false;
+    // LIFO stack of open field scopes. Each `<hp:fieldBegin>` pushes its
+    // `type` attribute; each `<hp:fieldEnd>` pops. A run is hyperlinked
+    // when any entry on the stack is "HYPERLINK".
+    let mut field_stack: Vec<String> = Vec::new();
+    let is_in_hyperlink =
+        |stack: &[String]| stack.iter().any(|t| t.eq_ignore_ascii_case("HYPERLINK"));
 
     loop {
         let event = reader.read_event_into(&mut buf);
@@ -54,7 +60,10 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                         }
                     }
                     "run" => {
-                        let mut r = Run::default();
+                        let mut r = Run {
+                            is_hyperlink: is_in_hyperlink(&field_stack),
+                            ..Run::default()
+                        };
                         for attr in e.attributes().flatten() {
                             let k = local_name(attr.key.as_ref());
                             if k == "charPrIDRef" {
@@ -69,6 +78,21 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                         if is_self_closing {
                             commit_run(&mut cur_run, &mut cur_para);
                         }
+                    }
+                    "fieldBegin" => {
+                        let mut kind = String::new();
+                        for attr in e.attributes().flatten() {
+                            if local_name(attr.key.as_ref()) == "type" {
+                                kind = attr
+                                    .decode_and_unescape_value(&reader)
+                                    .map(|c| c.into_owned())
+                                    .unwrap_or_default();
+                            }
+                        }
+                        field_stack.push(kind);
+                    }
+                    "fieldEnd" => {
+                        field_stack.pop();
                     }
                     "t" => {
                         in_text = !is_self_closing;

@@ -26,4 +26,7 @@ Current cases:
 | `04_font_allowlist_miss` | Hangul face outside spec allowlist → `ErrorCode: 1004` |
 | `05_font_allowlist_hit` | Hangul face inside allowlist → empty array |
 | `06_linespacing_mismatch` | para 180 vs spec 160 → `ErrorCode: 2050` |
-| `07_mixed_paragraphs` | only the dirty paragraph reports; clean one skipped |
+| `07_mixed_paragraphs` | only the dirty paragraph reports (LineNo 2); clean one skipped |
+| `08_style_forbidden` | paragraph has styleIDRef=7 vs spec `style.permission:false` → `ErrorCode: 3502` (`UseStyle: true`) |
+| `09_hyperlink_forbidden` | run wrapped in `<hp:fieldBegin type="HYPERLINK">` vs spec `hyperlink.permission:false` → `ErrorCode: 6901` (`UseHyperlink: true`) |
+| `10_macro_forbidden` | manifest has `Scripts/macros.js` vs spec `macro.permission:false` → `ErrorCode: 7001` (document-level, empty errorText) |

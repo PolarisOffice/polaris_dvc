@@ -13,6 +13,10 @@ use quick_xml::Reader;
 pub struct Manifest {
     pub section_paths: Vec<String>,
     pub header_path: Option<String>,
+    /// True when any manifest item's href contains `.js`. Mirrors upstream
+    /// `OWPMLReader::haveMacroInDocument()` — the presence of a JavaScript
+    /// asset in the OPF manifest is DVC's macro-usage signal.
+    pub has_macro: bool,
 }
 
 pub fn parse_content_hpf(xml: &str) -> Result<Manifest, HwpxError> {
@@ -74,6 +78,8 @@ pub fn parse_content_hpf(xml: &str) -> Result<Manifest, HwpxError> {
         .iter()
         .find(|(_, href, _)| href.ends_with("header.xml"))
         .map(|(_, href, _)| href.clone());
+
+    manifest.has_macro = items.iter().any(|(_, href, _)| href.contains(".js"));
 
     // Resolve sections, preferring spine order.
     let mut ordered: Vec<String> = Vec::new();

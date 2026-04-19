@@ -46,7 +46,8 @@ pub fn open_bytes(input: &[u8]) -> Result<HwpxDocument, HwpxError> {
         .unwrap_or("Contents/header.xml");
     let header_xml = read_entry_as_string(&mut zip, header_path)
         .ok_or(HwpxError::Structure("missing header.xml"))?;
-    let header = header::parse_header(&header_xml)?;
+    let mut header = header::parse_header(&header_xml)?;
+    header.has_macro = manifest.has_macro;
 
     let mut sections = Vec::with_capacity(manifest.section_paths.len());
     for path in &manifest.section_paths {

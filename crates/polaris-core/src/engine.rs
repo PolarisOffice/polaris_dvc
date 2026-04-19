@@ -69,6 +69,26 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
         before_vert_size: 0,
     };
 
+    // Document-scope checks run before the section walk so a forbidden
+    // macro reports before any per-run violation. These fire at most
+    // once per document.
+    if let Some(m) = spec.macro_.as_ref() {
+        if m.permission == Some(false) && doc.header.has_macro {
+            let v = ViolationRecord {
+                page_no: 1,
+                line_no: 1,
+                error_code: jid::MACRO_PERMISSION,
+                error_string: "macro asset found in manifest".to_string(),
+                use_style: false,
+                use_hyperlink: false,
+                ..ViolationRecord::new(jid::MACRO_PERMISSION)
+            };
+            if !ctx.push(v) {
+                return ctx.report;
+            }
+        }
+    }
+
     'sections: for section in &doc.sections {
         // Per upstream `GetPageInfo`, vertical-position trackers reset per
         // section. Page counter is cumulative across sections.
@@ -129,12 +149,56 @@ fn check_paragraph(ctx: &mut Ctx, paragraph: &Paragraph, spec: &RuleSpec) -> boo
         }
     }
 
+    // Style-permission: upstream DVCErrorInfo marks runs with `use_style`
+    // when the paragraph references a non-zero style id. When the spec
+    // forbids style usage, that's a violation at the run level.
+    let style_forbidden = spec
+        .style
+        .as_ref()
+        .and_then(|p| p.permission)
+        .map(|allowed| !allowed)
+        .unwrap_or(false);
+    let hyperlink_forbidden = spec
+        .hyperlink
+        .as_ref()
+        .and_then(|p| p.permission)
+        .map(|allowed| !allowed)
+        .unwrap_or(false);
+
     for run in &paragraph.runs {
         if let Some(char_spec) = spec.charshape.as_ref() {
             if let Some(char_pr) = ctx.doc.header.char_shape(run.char_pr_id_ref) {
                 if !check_char_shape(ctx, paragraph, run, char_pr, char_spec) {
                     return false;
                 }
+            }
+        }
+
+        if style_forbidden && paragraph.style_id_ref != 0 {
+            let mut v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::STYLE_PERMISSION,
+                format!("style id {} used but not permitted", paragraph.style_id_ref),
+            );
+            v.use_style = true;
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+
+        if hyperlink_forbidden && run.is_hyperlink {
+            let mut v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::HYPERLINK_PERMISSION,
+                "hyperlink run found but not permitted".to_string(),
+            );
+            v.use_hyperlink = true;
+            if !ctx.push(v) {
+                return false;
             }
         }
     }
@@ -350,6 +414,7 @@ mod tests {
         let run = polaris_hwpx::Run {
             char_pr_id_ref: 0,
             text: text.into(),
+            is_hyperlink: false,
         };
         let paragraph = polaris_hwpx::Paragraph {
             id: 0,
@@ -483,6 +548,7 @@ mod tests {
             runs: vec![Run {
                 char_pr_id_ref: char_ref,
                 text: text.into(),
+                is_hyperlink: false,
             }],
             line_segs: vec![LineSeg {
                 vert_pos: vp,
@@ -539,6 +605,7 @@ mod tests {
             runs: vec![Run {
                 char_pr_id_ref: 0,
                 text: text.into(),
+                is_hyperlink: false,
             }],
             line_segs: vec![LineSeg {
                 vert_pos: vp,

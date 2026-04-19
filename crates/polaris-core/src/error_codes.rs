@@ -45,6 +45,9 @@ impl ErrorCode {
             1012 => "Strikeout setting does not match specification",
             2001 => "Paragraph alignment does not match specification",
             2050 => "Line spacing out of specification range",
+            3502 => "Style usage is not permitted",
+            6901 => "Hyperlink usage is not permitted",
+            7001 => "Macro usage is not permitted",
             3001 => "Table width does not match specification",
             3002 => "Table border does not match specification",
             _ => "Rule violation",
@@ -64,6 +67,9 @@ pub mod jid {
     pub const CHAR_SHAPE_STRIKEOUT: ErrorCode = ErrorCode::new(1012);
     pub const PARA_SHAPE_ALIGN: ErrorCode = ErrorCode::new(2001);
     pub const PARA_SHAPE_LINESPACING: ErrorCode = ErrorCode::new(2050);
+    pub const STYLE_PERMISSION: ErrorCode = ErrorCode::new(3502);
+    pub const HYPERLINK_PERMISSION: ErrorCode = ErrorCode::new(6901);
+    pub const MACRO_PERMISSION: ErrorCode = ErrorCode::new(7001);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
