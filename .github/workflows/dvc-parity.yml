@@ -108,11 +108,35 @@ jobs:
               '--quiet', '--norestart', '--nocache'
             )
 
+      - name: Detect installed Windows SDK
+        id: sdk
+        shell: pwsh
+        run: |
+          $root = 'C:\Program Files (x86)\Windows Kits\10\Include'
+          if (!(Test-Path $root)) { $root = 'C:\Program Files\Windows Kits\10\Include' }
+          $versions = Get-ChildItem $root -Directory |
+            Where-Object { $_.Name -match '^10\.' } |
+            Sort-Object Name -Descending
+          if ($null -eq $versions -or $versions.Count -eq 0) {
+            throw "No Windows 10 SDK found under $root"
+          }
+          $ver = $versions[0].Name
+          Write-Host "Using Windows SDK: $ver"
+          "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Build DVCModel + ExampleWindows (x64 Release)
         shell: cmd
+        # Override both `WindowsTargetPlatformVersion` (the upstream
+        # solution pins 10.0.17763.0, which isn't on windows-latest) and
+        # `PlatformToolset` fallback. `/p:RetargetOnBuild=true` also
+        # hints MSBuild to accept the override.
         run: |
           cd dvc
-          msbuild DVCModel.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+          msbuild DVCModel.sln ^
+            /p:Configuration=Release ^
+            /p:Platform=x64 ^
+            /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
+            /m /v:minimal
 
       - name: Locate ExampleWindows.exe
         id: find-exe
