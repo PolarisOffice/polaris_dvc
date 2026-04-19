@@ -53,7 +53,9 @@ wasm-pack build crates/polaris-wasm --target nodejs
 
 - [docs/golden-tests.md](docs/golden-tests.md) — DVC parity 회귀 테스트 운영 방법
 - [docs/jid-registry.md](docs/jid-registry.md) — JID 전체 레지스트리 재생성 및 엔진 확장 가이드
-- [docs/dvc-parity-status.md](docs/dvc-parity-status.md) — Windows CI에서 업스트림 DVC 빌드·검증 진행 상황
+- [docs/dvc-parity-status.md](docs/dvc-parity-status.md) — CI에서 업스트림 DVC 빌드 시도 기록
+- [docs/windows-parity-howto.md](docs/windows-parity-howto.md) — Windows PC에서 DVC.exe 실행해 expected.json 생성·검증
+- [docs/parity-roadmap.md](docs/parity-roadmap.md) — 기능 parity 우선순위와 남은 작업
 
 ## 원격 푸시
 

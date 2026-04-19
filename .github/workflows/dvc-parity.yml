@@ -11,18 +11,19 @@ name: DVC parity (Windows)
 # a research task, not a blocker.
 
 on:
+  # Manual-only for now. The recommended path is to run the
+  # equivalent logic on a real Windows machine via
+  # `scripts/parity-windows.ps1` — iteration there is ~5x faster
+  # than on a windows-latest runner and the log surface is
+  # immediately available. Re-enable `push:` here only after the
+  # build-configuration issues documented in
+  # `docs/dvc-parity-status.md` are resolved.
   workflow_dispatch:
     inputs:
       upstream_ref:
         description: "Upstream hancom-io/dvc ref to build (branch/tag/SHA)"
         default: "main"
         required: false
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/dvc-parity.yml"
-      - "scripts/diff-dvc-outputs.sh"
-      - "testdata/golden/**"
 
 permissions:
   contents: read
