@@ -1,0 +1,34 @@
+[
+  {
+    "CharIDRef": 1,
+    "ParaPrIDRef": 0,
+    "errorText": "bad",
+    "PageNo": 1,
+    "LineNo": 1,
+    "ErrorCode": 1001,
+    "TableID": 0,
+    "IsInTable": false,
+    "IsInTableInTable": false,
+    "TableRow": 0,
+    "TableCol": 0,
+    "UseStyle": false,
+    "IsInShape": false,
+    "UseHyperlink": false
+  },
+  {
+    "CharIDRef": 1,
+    "ParaPrIDRef": 0,
+    "errorText": "bad",
+    "PageNo": 1,
+    "LineNo": 1,
+    "ErrorCode": 1009,
+    "TableID": 0,
+    "IsInTable": false,
+    "IsInTableInTable": false,
+    "TableRow": 0,
+    "TableCol": 0,
+    "UseStyle": false,
+    "IsInShape": false,
+    "UseHyperlink": false
+  }
+]

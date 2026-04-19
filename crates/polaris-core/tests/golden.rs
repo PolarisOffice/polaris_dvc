@@ -1,0 +1,253 @@
+//! Golden regression harness.
+//!
+//! Each case under `testdata/golden/<case>/` holds three files:
+//!
+//! - `doc.hwpx` — realistic HWPX produced from a Rust template. Committed
+//!   as a binary so a future Windows contributor can feed it to DVC.exe
+//!   for bit-exact parity verification.
+//! - `spec.json` — the DVC rule file applied to the document.
+//! - `expected.json` — the DVC-compatible JSON array the engine must emit
+//!   (using `OutputOption::AllOption`).
+//!
+//! The default `golden_cases` test enforces the committed expectations.
+//! Setting `POLARIS_REGEN_FIXTURES=1` before running tests rewrites every
+//! `doc.hwpx` / `expected.json` from the in-Rust templates below — useful
+//! when a template changes intentionally.
+
+mod support;
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use polaris_core::engine::{validate, EngineOptions};
+use polaris_core::output::OutputOption;
+use polaris_core::rules::schema::RuleSpec;
+use serde_json::Value;
+
+use support::{FixCharPr, FixParaPr, FixParagraph, FixRun, Fixture};
+
+struct Case {
+    name: &'static str,
+    build: fn() -> Fixture,
+    spec: &'static str,
+}
+
+fn cases() -> Vec<Case> {
+    vec![
+        Case {
+            name: "01_clean",
+            build: || Fixture::baseline(),
+            spec: r#"{
+  "charshape": { "font": ["바탕"], "fontsize": 10, "bold": false },
+  "parashape": { "linespacingvalue": 160 }
+}
+"#,
+        },
+        Case {
+            name: "02_fontsize_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].height = 1200;
+                f
+            },
+            spec: r#"{
+  "charshape": { "fontsize": 10 }
+}
+"#,
+        },
+        Case {
+            name: "03_bold_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].bold = true;
+                f
+            },
+            spec: r#"{
+  "charshape": { "bold": false }
+}
+"#,
+        },
+        Case {
+            name: "04_font_allowlist_miss",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.hangul_face = "임의글꼴".into();
+                f
+            },
+            spec: r#"{
+  "charshape": { "font": ["바탕", "돋움", "굴림"] }
+}
+"#,
+        },
+        Case {
+            name: "05_font_allowlist_hit",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.hangul_face = "돋움".into();
+                f
+            },
+            spec: r#"{
+  "charshape": { "font": ["바탕", "돋움", "굴림"] }
+}
+"#,
+        },
+        Case {
+            name: "06_linespacing_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.para_prs[0].line_spacing_value = 180.0;
+                f
+            },
+            spec: r#"{
+  "parashape": { "linespacingvalue": 160 }
+}
+"#,
+        },
+        Case {
+            name: "07_mixed_paragraphs",
+            build: || {
+                // Two paragraphs, charPr 0 is clean, charPr 1 is bold+large.
+                Fixture {
+                    hangul_face: "바탕".into(),
+                    char_prs: vec![
+                        FixCharPr {
+                            id: 0,
+                            height: 1000,
+                            bold: false,
+                            italic: false,
+                        },
+                        FixCharPr {
+                            id: 1,
+                            height: 1400,
+                            bold: true,
+                            italic: false,
+                        },
+                    ],
+                    para_prs: vec![FixParaPr {
+                        id: 0,
+                        align: "JUSTIFY".into(),
+                        line_spacing_value: 160.0,
+                    }],
+                    paragraphs: vec![
+                        FixParagraph {
+                            para_pr_id_ref: 0,
+                            runs: vec![FixRun {
+                                char_pr_id_ref: 0,
+                                text: "ok".into(),
+                            }],
+                        },
+                        FixParagraph {
+                            para_pr_id_ref: 0,
+                            runs: vec![FixRun {
+                                char_pr_id_ref: 1,
+                                text: "bad".into(),
+                            }],
+                        },
+                    ],
+                }
+            },
+            spec: r#"{
+  "charshape": { "fontsize": 10, "bold": false }
+}
+"#,
+        },
+    ]
+}
+
+fn testdata_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/golden")
+        .canonicalize()
+        .expect("testdata/golden exists (see tests/support and testdata/golden/README.md)")
+}
+
+fn case_dir(name: &str) -> PathBuf {
+    testdata_root().join(name)
+}
+
+fn regenerate() -> bool {
+    std::env::var_os("POLARIS_REGEN_FIXTURES").is_some()
+}
+
+#[test]
+fn golden_cases() {
+    let root = testdata_root();
+    for case in cases() {
+        let dir = root.join(case.name);
+        let doc_path = dir.join("doc.hwpx");
+        let spec_path = dir.join("spec.json");
+        let expected_path = dir.join("expected.json");
+
+        let fixture = (case.build)();
+        let hwpx_bytes = fixture.to_hwpx_bytes();
+        let spec: RuleSpec = serde_json::from_str(case.spec).expect("case spec parses");
+
+        let doc = polaris_hwpx::open_bytes(&hwpx_bytes).expect("fixture parses");
+        let report = validate(&doc, &spec, &EngineOptions::default());
+        let actual = report.to_json_value(OutputOption::AllOption);
+
+        if regenerate() {
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(&doc_path, &hwpx_bytes).unwrap();
+            fs::write(&spec_path, case.spec).unwrap();
+            let pretty = serde_json::to_string_pretty(&actual).unwrap() + "\n";
+            fs::write(&expected_path, pretty).unwrap();
+            continue;
+        }
+
+        let committed_doc = fs::read(&doc_path)
+            .unwrap_or_else(|_| panic!("missing {}; run POLARIS_REGEN_FIXTURES=1", case.name));
+        assert_eq!(
+            committed_doc, hwpx_bytes,
+            "doc.hwpx drift for {} — regenerate with POLARIS_REGEN_FIXTURES=1",
+            case.name
+        );
+
+        let expected: Value = serde_json::from_slice(
+            &fs::read(&expected_path)
+                .unwrap_or_else(|_| panic!("missing expected for {}", case.name)),
+        )
+        .expect("expected.json parses");
+
+        assert_eq!(
+            actual, expected,
+            "golden output mismatch for {} — regenerate with POLARIS_REGEN_FIXTURES=1",
+            case.name
+        );
+    }
+}
+
+/// Sanity: every golden case directory on disk must correspond to a
+/// declared case. Prevents orphans after renames.
+#[test]
+fn no_orphan_case_directories() {
+    let root = testdata_root();
+    let declared: std::collections::HashSet<&str> = cases().iter().map(|c| c.name).collect();
+    for entry in fs::read_dir(&root).unwrap() {
+        let entry = entry.unwrap();
+        if !entry.file_type().unwrap().is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        assert!(
+            declared.contains(name.as_str()),
+            "orphan golden case: {name} — delete the directory or add a Case entry"
+        );
+    }
+    // Also verify each declared case has a populated directory (unless we're
+    // about to regenerate).
+    if !regenerate() {
+        for c in cases() {
+            let d = case_dir(c.name);
+            assert!(d.exists(), "missing dir for {}", c.name);
+            for f in ["doc.hwpx", "spec.json", "expected.json"] {
+                assert!(
+                    d.join(f).exists(),
+                    "missing {}/{} — run POLARIS_REGEN_FIXTURES=1",
+                    c.name,
+                    f
+                );
+            }
+        }
+    }
+}
