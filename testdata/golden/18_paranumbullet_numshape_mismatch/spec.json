@@ -1,0 +1,7 @@
+{
+  "paranumbullet": {
+    "leveltype": [
+      { "level": 2, "numbertype": "^2.", "numbershape": 8 }
+    ]
+  }
+}

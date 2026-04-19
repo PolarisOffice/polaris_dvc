@@ -24,7 +24,10 @@ use polaris_core::output::OutputOption;
 use polaris_core::rules::schema::RuleSpec;
 use serde_json::Value;
 
-use support::{FixBorderFill, FixCharPr, FixParaPr, FixParagraph, FixRun, FixTable, Fixture};
+use support::{
+    FixBorderFill, FixBullet, FixCharPr, FixNumbering, FixParaHead, FixParaPr, FixParagraph,
+    FixRun, FixTable, Fixture,
+};
 
 struct Case {
     name: &'static str,
@@ -132,6 +135,8 @@ fn cases() -> Vec<Case> {
                         ..FixParaPr::default()
                     }],
                     border_fills: vec![FixBorderFill::solid_default(1)],
+                    numberings: Vec::new(),
+                    bullets: Vec::new(),
                     paragraphs: vec![
                         FixParagraph {
                             para_pr_id_ref: 0,
@@ -219,6 +224,72 @@ fn cases() -> Vec<Case> {
   "table": {
     "border": [
       { "position": 1, "bordertype": 1 }
+    ]
+  }
+}
+"#,
+        },
+        Case {
+            name: "16_bullet_char_not_allowed",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.bullets.push(FixBullet {
+                    id: 1,
+                    char_: "★".into(),
+                });
+                f
+            },
+            // Allowed set excludes the star.
+            spec: r#"{
+  "bullet": { "bulletshapes": "□○-•*" }
+}
+"#,
+        },
+        Case {
+            name: "17_outlineshape_numtype_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.numberings.push(FixNumbering {
+                    id: 3,
+                    start: 1,
+                    heads: vec![FixParaHead {
+                        level: 1,
+                        start: 1,
+                        num_format: "^1)".into(), // spec wants "^1."
+                        number_shape: 0,
+                    }],
+                });
+                f
+            },
+            spec: r#"{
+  "outlineshape": {
+    "leveltype": [
+      { "level": 1, "numbertype": "^1.", "numbershape": 0 }
+    ]
+  }
+}
+"#,
+        },
+        Case {
+            name: "18_paranumbullet_numshape_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.numberings.push(FixNumbering {
+                    id: 4,
+                    start: 1,
+                    heads: vec![FixParaHead {
+                        level: 2,
+                        start: 1,
+                        num_format: "^2.".into(),
+                        number_shape: 3, // spec wants 8
+                    }],
+                });
+                f
+            },
+            spec: r#"{
+  "paranumbullet": {
+    "leveltype": [
+      { "level": 2, "numbertype": "^2.", "numbershape": 8 }
     ]
   }
 }

@@ -35,3 +35,6 @@ Current cases:
 | `13_charshape_ratio_mismatch` | charPr ratio 90 vs spec `ratio:100` → `ErrorCode: 1007` |
 | `14_parashape_indent_mismatch` | paraPr margin-intent 500 vs spec `indent:0` → `ErrorCode: 2005` |
 | `15_specialcharacter_below_minimum` | run text contains TAB (U+0009) vs spec `minimum:32` → `ErrorCode: 3101` |
+| `16_bullet_char_not_allowed` | header bullet char `★` vs spec `bulletshapes:"□○-•*"` → `ErrorCode: 3304` |
+| `17_outlineshape_numtype_mismatch` | numbering level 1 numFormat `"^1)"` vs spec `numbertype:"^1."` → `ErrorCode: 3206` |
+| `18_paranumbullet_numshape_mismatch` | numbering level 2 numberShape 3 vs spec `numbershape:8` → `ErrorCode: 3407` |

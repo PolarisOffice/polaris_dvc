@@ -6,8 +6,8 @@ use quick_xml::Reader;
 
 use crate::container::local_name;
 use crate::types::{
-    Border, BorderFill, CharPr, FaceName, FontRef, Header, ParaPr, Shadow, Strikeout, Style,
-    Underline,
+    Border, BorderFill, Bullet, CharPr, FaceName, FontRef, Header, Numbering, ParaHead, ParaPr,
+    Shadow, Strikeout, Style, Underline,
 };
 use crate::HwpxError;
 
@@ -23,6 +23,7 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
     let mut cur_char: Option<CharPr> = None;
     let mut cur_para: Option<ParaPr> = None;
     let mut cur_border_fill: Option<BorderFill> = None;
+    let mut cur_numbering: Option<Numbering> = None;
 
     loop {
         let event = reader.read_event_into(&mut buf);
@@ -204,6 +205,33 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                             ..BorderFill::default()
                         });
                     }
+                    "numbering" => {
+                        cur_numbering = Some(Numbering {
+                            id: attr_u32(&attrs, "id").unwrap_or(0),
+                            start: attr_u32(&attrs, "start").unwrap_or(0),
+                            ..Numbering::default()
+                        });
+                    }
+                    "paraHead" if cur_numbering.is_some() => {
+                        // `<hh:paraHead level numFormat start>` — one row of
+                        // the numbering level table. `numberShape` is a
+                        // separate attribute mapped to upstream's `GetNumShape`.
+                        let head = ParaHead {
+                            level: attr_u32(&attrs, "level").unwrap_or(0),
+                            start: attr_u32(&attrs, "start").unwrap_or(0),
+                            num_format: attr(&attrs, "numFormat").unwrap_or_default(),
+                            number_shape: attr_u32(&attrs, "numberShape").unwrap_or(0),
+                        };
+                        if let Some(n) = cur_numbering.as_mut() {
+                            n.para_heads.push(head);
+                        }
+                    }
+                    "bullet" => {
+                        header.bullets.push(Bullet {
+                            id: attr_u32(&attrs, "id").unwrap_or(0),
+                            char_: attr(&attrs, "char").unwrap_or_default(),
+                        });
+                    }
                     "leftBorder" | "rightBorder" | "topBorder" | "bottomBorder"
                         if cur_border_fill.is_some() =>
                     {
@@ -246,6 +274,11 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                                 header.border_fills.push(bf);
                             }
                         }
+                        "numbering" => {
+                            if let Some(n) = cur_numbering.take() {
+                                header.numberings.push(n);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -269,6 +302,11 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                             header.border_fills.push(bf);
                         }
                     }
+                    "numbering" => {
+                        if let Some(n) = cur_numbering.take() {
+                            header.numberings.push(n);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -285,6 +323,12 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
     }
     if let Some(p) = cur_para.take() {
         header.para_shapes.push(p);
+    }
+    if let Some(bf) = cur_border_fill.take() {
+        header.border_fills.push(bf);
+    }
+    if let Some(n) = cur_numbering.take() {
+        header.numberings.push(n);
     }
 
     Ok(header)
@@ -388,6 +432,37 @@ mod tests {
         let h = parse_header(SAMPLE).unwrap();
         assert_eq!(h.styles.len(), 1);
         assert_eq!(h.styles[0].name, "바탕글");
+    }
+
+    #[test]
+    fn parses_numberings_and_bullets() {
+        let xml = r##"<?xml version="1.0"?>
+<hh:head xmlns:hh="h">
+  <hh:refList>
+    <hh:numberings itemCnt="1">
+      <hh:numbering id="3" start="1">
+        <hh:paraHead level="1" start="1" numFormat="^1." numberShape="0"/>
+        <hh:paraHead level="2" start="1" numFormat="^2." numberShape="8"/>
+      </hh:numbering>
+    </hh:numberings>
+    <hh:bullets itemCnt="2">
+      <hh:bullet id="1" char="□"/>
+      <hh:bullet id="2" char="★"/>
+    </hh:bullets>
+  </hh:refList>
+</hh:head>"##;
+        let h = parse_header(xml).unwrap();
+        assert_eq!(h.numberings.len(), 1);
+        let n = &h.numberings[0];
+        assert_eq!(n.id, 3);
+        assert_eq!(n.para_heads.len(), 2);
+        assert_eq!(n.para_heads[0].level, 1);
+        assert_eq!(n.para_heads[0].num_format, "^1.");
+        assert_eq!(n.para_heads[1].num_format, "^2.");
+        assert_eq!(n.para_heads[1].number_shape, 8);
+        assert_eq!(h.bullets.len(), 2);
+        assert_eq!(h.bullets[0].char_, "□");
+        assert_eq!(h.bullets[1].char_, "★");
     }
 
     #[test]

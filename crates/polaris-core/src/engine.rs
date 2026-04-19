@@ -25,7 +25,7 @@ use crate::error_codes::{jid, ErrorCode};
 use crate::output::ViolationRecord;
 use crate::report::Report;
 use crate::rules::schema::{
-    BorderRule, CharShape, ParaShape, RuleSpec, SpecialCharacter, TableSpec,
+    BorderRule, BulletSpec, CharShape, LevelType, ParaShape, RuleSpec, SpecialCharacter, TableSpec,
 };
 
 use polaris_hwpx::{Border, BorderFill, CharPr, HwpxDocument, ParaPr, Paragraph, Run, Table};
@@ -101,6 +101,33 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
                     return ctx.report;
                 }
             }
+        }
+    }
+
+    // Document-scope bullet / outline / paranumbullet checks.
+    if let Some(bullet_spec) = spec.bullet.as_ref() {
+        if !check_bullets(&mut ctx, bullet_spec) {
+            return ctx.report;
+        }
+    }
+    if let Some(ol_spec) = spec.outlineshape.as_ref() {
+        if !check_outline_levels(
+            &mut ctx,
+            ol_spec.leveltype.as_deref(),
+            jid::OUTLINESHAPE_NUMBERTYPE,
+            jid::OUTLINESHAPE_NUMBERSHAPE,
+        ) {
+            return ctx.report;
+        }
+    }
+    if let Some(pn_spec) = spec.paranumbullet.as_ref() {
+        if !check_outline_levels(
+            &mut ctx,
+            pn_spec.leveltype.as_deref(),
+            jid::PARANUMBULLET_NUMBERTYPE,
+            jid::PARANUMBULLET_NUMBERSHAPE,
+        ) {
+            return ctx.report;
         }
     }
 
@@ -650,6 +677,96 @@ fn table_violation(
         error_string: diagnostic,
         ..ViolationRecord::new(code)
     }
+}
+
+fn check_bullets(ctx: &mut Ctx, spec: &BulletSpec) -> bool {
+    let Some(allowed) = spec.bulletshapes.as_deref() else {
+        return true;
+    };
+    for bullet in &ctx.doc.header.bullets {
+        // A bullet's `char` may be an empty string (no-op bullet). Skip it.
+        if bullet.char_.is_empty() {
+            continue;
+        }
+        let ok = bullet.char_.chars().all(|ch| allowed.contains(ch));
+        if !ok {
+            let v = ViolationRecord {
+                page_no: ctx.page_no.max(1),
+                line_no: ctx.line_no,
+                error_code: jid::BULLET_SHAPES,
+                error_string: format!(
+                    "bullet id {} char '{}' not in allowed set \"{}\"",
+                    bullet.id, bullet.char_, allowed
+                ),
+                ..ViolationRecord::new(jid::BULLET_SHAPES)
+            };
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Shared logic for outlineshape and paranumbullet. Walks each numbering
+/// in the header, and for every level entry whose number matches a spec
+/// `leveltype[*].level`, compares `num_format` (→ numbertype) and
+/// `number_shape` (→ numbershape). Emits the caller-supplied error codes.
+fn check_outline_levels(
+    ctx: &mut Ctx,
+    leveltype: Option<&[LevelType]>,
+    num_type_code: ErrorCode,
+    num_shape_code: ErrorCode,
+) -> bool {
+    let Some(levels) = leveltype else { return true };
+    if levels.is_empty() {
+        return true;
+    }
+    for numbering in &ctx.doc.header.numberings {
+        for head in &numbering.para_heads {
+            // Find the spec entry for this level. Silently skip unmatched
+            // levels — the spec may only constrain a subset.
+            let Some(rule) = levels.iter().find(|l| l.level == Some(head.level)) else {
+                continue;
+            };
+
+            if let Some(expected) = rule.numbertype.as_deref() {
+                if head.num_format != expected {
+                    let v = ViolationRecord {
+                        page_no: ctx.page_no.max(1),
+                        line_no: ctx.line_no,
+                        error_code: num_type_code,
+                        error_string: format!(
+                            "numbering id {} level {}: numFormat \"{}\" != spec \"{}\"",
+                            numbering.id, head.level, head.num_format, expected
+                        ),
+                        ..ViolationRecord::new(num_type_code)
+                    };
+                    if !ctx.push(v) {
+                        return false;
+                    }
+                }
+            }
+            if let Some(expected) = rule.numbershape {
+                if head.number_shape != expected {
+                    let v = ViolationRecord {
+                        page_no: ctx.page_no.max(1),
+                        line_no: ctx.line_no,
+                        error_code: num_shape_code,
+                        error_string: format!(
+                            "numbering id {} level {}: numberShape {} != spec {}",
+                            numbering.id, head.level, head.number_shape, expected
+                        ),
+                        ..ViolationRecord::new(num_shape_code)
+                    };
+                    if !ctx.push(v) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
 }
 
 fn check_special_character(

@@ -68,10 +68,54 @@ pub struct RuleSpec {
     pub parashape: Option<ParaShape>,
     pub table: Option<TableSpec>,
     pub specialcharacter: Option<SpecialCharacter>,
+    pub outlineshape: Option<OutlineShape>,
+    pub bullet: Option<BulletSpec>,
+    pub paranumbullet: Option<ParaNumBullet>,
     pub style: Option<Permission>,
     pub hyperlink: Option<Permission>,
     #[serde(rename = "macro")]
     pub macro_: Option<Permission>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// `outlineshape` / `paranumbullet` level table — same schema, two
+/// separately-applied rule categories (outline uses section secPr's
+/// outlineShapeIDRef-referenced numbering; paranumbullet applies to the
+/// others).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct OutlineShape {
+    pub leveltype: Option<Vec<LevelType>>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct ParaNumBullet {
+    pub leveltype: Option<Vec<LevelType>>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct LevelType {
+    pub level: Option<u32>,
+    pub numbertype: Option<String>,
+    pub numbershape: Option<u32>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// `bullet.bulletshapes` — the rule value is a string of permitted bullet
+/// characters; any document bullet whose `char` is not contained fires
+/// `JID_BULLET_SHAPES` (3304).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct BulletSpec {
+    pub bulletshapes: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

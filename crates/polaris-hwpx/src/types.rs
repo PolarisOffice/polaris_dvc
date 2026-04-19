@@ -18,10 +18,42 @@ pub struct Header {
     pub para_shapes: Vec<ParaPr>,
     pub border_fills: Vec<BorderFill>,
     pub styles: Vec<Style>,
+    pub numberings: Vec<Numbering>,
+    pub bullets: Vec<Bullet>,
     /// True when the document contains any macro asset (populated from the
     /// OPF manifest during `open_bytes` — the header XML itself doesn't
     /// carry this signal). See `container::Manifest::has_macro`.
     pub has_macro: bool,
+}
+
+/// `<hh:numbering>` entry — drives both outlineshape and paranumbullet
+/// rule categories. A `Numbering` holds per-level formatting (`paraHead`
+/// entries) that the engine compares against the spec's `leveltype`.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Numbering {
+    pub id: u32,
+    pub start: u32,
+    pub para_heads: Vec<ParaHead>,
+}
+
+/// `<hh:paraHead>` — one row in the level table. `num_format` carries the
+/// HWPX numFormat string (e.g., "^1.", "(^5)"); `number_shape` corresponds
+/// to upstream `GetNumShape` (enum value).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ParaHead {
+    pub level: u32,
+    pub start: u32,
+    pub num_format: String,
+    pub number_shape: u32,
+}
+
+/// `<hh:bullet>` entry.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Bullet {
+    pub id: u32,
+    /// The bullet character, as stored in the `char` attribute of
+    /// `<hh:bullet>`. Typically a single Unicode scalar.
+    pub char_: String,
 }
 
 /// `<hh:borderFill>` entry. The `id` is referenced by tables (and by

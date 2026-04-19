@@ -50,6 +50,11 @@ impl ErrorCode {
             2010 => "Paragraph bottom spacing does not match specification",
             3101 => "Character code point below specification minimum",
             3102 => "Character code point above specification maximum",
+            3206 => "Outline numbering type does not match specification",
+            3207 => "Outline numbering shape does not match specification",
+            3304 => "Bullet character not in allowed set",
+            3406 => "Paragraph numbering type does not match specification",
+            3407 => "Paragraph numbering shape does not match specification",
             3502 => "Style usage is not permitted",
             6901 => "Hyperlink usage is not permitted",
             7001 => "Macro usage is not permitted",
@@ -91,6 +96,11 @@ pub mod jid {
     pub const TABLE_IN_TABLE: ErrorCode = ErrorCode::new(3056);
     pub const SPECIAL_CHAR_MINIMUM: ErrorCode = ErrorCode::new(3101);
     pub const SPECIAL_CHAR_MAXIMUM: ErrorCode = ErrorCode::new(3102);
+    pub const OUTLINESHAPE_NUMBERTYPE: ErrorCode = ErrorCode::new(3206);
+    pub const OUTLINESHAPE_NUMBERSHAPE: ErrorCode = ErrorCode::new(3207);
+    pub const BULLET_SHAPES: ErrorCode = ErrorCode::new(3304);
+    pub const PARANUMBULLET_NUMBERTYPE: ErrorCode = ErrorCode::new(3406);
+    pub const PARANUMBULLET_NUMBERSHAPE: ErrorCode = ErrorCode::new(3407);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

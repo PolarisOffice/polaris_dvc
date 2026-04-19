@@ -29,10 +29,33 @@ pub struct Fixture {
     pub char_prs: Vec<FixCharPr>,
     pub para_prs: Vec<FixParaPr>,
     pub border_fills: Vec<FixBorderFill>,
+    pub numberings: Vec<FixNumbering>,
+    pub bullets: Vec<FixBullet>,
     pub paragraphs: Vec<FixParagraph>,
     /// Add a `<opf:item href="Scripts/macros.js" …>` entry so upstream
     /// macro detection (manifest-scan for `.js`) fires on this document.
     pub has_macro: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct FixNumbering {
+    pub id: u32,
+    pub start: u32,
+    pub heads: Vec<FixParaHead>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FixParaHead {
+    pub level: u32,
+    pub start: u32,
+    pub num_format: String,
+    pub number_shape: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct FixBullet {
+    pub id: u32,
+    pub char_: String,
 }
 
 /// Declarative `<hh:borderFill>`. Only the four cardinal sides are
@@ -165,6 +188,8 @@ impl Fixture {
             char_prs: vec![FixCharPr::default()],
             para_prs: vec![FixParaPr::default()],
             border_fills: vec![FixBorderFill::solid_default(1)],
+            numberings: Vec::new(),
+            bullets: Vec::new(),
             paragraphs: vec![FixParagraph {
                 para_pr_id_ref: 0,
                 style_id_ref: 0,
@@ -393,10 +418,42 @@ impl Fixture {
              langID=\"1042\" lockForm=\"0\"/>\
              </hh:styles>",
         );
+        s.push_str(&format!(
+            "<hh:numberings itemCnt=\"{}\">",
+            self.numberings.len()
+        ));
+        for n in &self.numberings {
+            s.push_str(&format!(
+                "<hh:numbering id=\"{}\" start=\"{}\">",
+                n.id, n.start
+            ));
+            for h in &n.heads {
+                s.push_str(&format!(
+                    "<hh:paraHead level=\"{}\" start=\"{}\" numFormat=\"{}\" numberShape=\"{}\" \
+                     align=\"LEFT\" useInstWidth=\"1\" autoIndent=\"1\" widthAdjust=\"0\" \
+                     textOffsetType=\"PERCENT\" textOffset=\"50\" charPrIDRef=\"0\" checkable=\"0\"/>",
+                    h.level,
+                    h.start,
+                    xml_escape(&h.num_format),
+                    h.number_shape
+                ));
+            }
+            s.push_str("</hh:numbering>");
+        }
+        s.push_str("</hh:numberings>");
+        s.push_str(&format!("<hh:bullets itemCnt=\"{}\">", self.bullets.len()));
+        for b in &self.bullets {
+            s.push_str(&format!(
+                "<hh:bullet id=\"{}\" char=\"{}\" checkedChar=\"\" useInstWidth=\"0\" \
+                 autoIndent=\"0\" widthAdjust=\"0\" textOffsetType=\"PERCENT\" \
+                 textOffset=\"50\" charPrIDRef=\"0\"/>",
+                b.id,
+                xml_escape(&b.char_)
+            ));
+        }
+        s.push_str("</hh:bullets>");
         s.push_str(
-            "<hh:numberings itemCnt=\"0\"/>\
-             <hh:bullets itemCnt=\"0\"/>\
-             <hh:memoProperties itemCnt=\"0\"/>\
+            "<hh:memoProperties itemCnt=\"0\"/>\
              <hh:trackChanges itemCnt=\"0\"/>\
              <hh:trackChangeAuthors itemCnt=\"0\"/>",
         );
