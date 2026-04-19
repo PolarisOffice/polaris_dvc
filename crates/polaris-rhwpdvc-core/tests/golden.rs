@@ -679,6 +679,17 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // ParaShape linespacing mode: fixture type=PERCENT, spec
+            // demands "FIXED" → JID 2007 fires.
+            name: "37_parashape_linespacing_mode_mismatch",
+            build: || Fixture::baseline(),
+            spec: r#"{
+  "parashape": { "linespacing": "FIXED" }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Same fixture + spec as 24_table_bgfill_type_mismatch, but
             // the DvcStrict profile filters out JIDs upstream leaves as
             // no-op. bgfill-type is one of those, so expected.json is [].

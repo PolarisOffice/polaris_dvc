@@ -633,6 +633,25 @@ fn check_para_shape(
     para_pr: &ParaPr,
     spec: &ParaShape,
 ) -> bool {
+    // linespacing mode (type enum). Upstream JID_PARA_SHAPE_LINESPACING
+    // compares `paraShape->getLinespacing() != paraPr->lineSpacing.type`.
+    if let Some(expected) = spec.linespacing.as_deref() {
+        if !para_pr.line_spacing_type.eq_ignore_ascii_case(expected) {
+            let v = para_violation(
+                ctx,
+                paragraph,
+                jid::PARA_SHAPE_LINESPACING_TYPE,
+                format!(
+                    "line spacing type \"{}\" != spec \"{}\"",
+                    para_pr.line_spacing_type, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
     if let Some(r) = spec.linespacingvalue.as_ref() {
         if r.is_constrained() && !r.matches(para_pr.line_spacing_value) {
             let v = para_violation(

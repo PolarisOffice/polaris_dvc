@@ -12,6 +12,51 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Deserialize `Option<String>` from either a string value or an
+/// integer/number (normalized to its decimal spelling). Used for fields
+/// where upstream samples are inconsistent — e.g. `linespacing` is
+/// documented as an enum of strings in jsonFullSpec.json but the real
+/// test.json uses `0`/`1`/... integers.
+fn deserialize_opt_str_or_int<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    use serde::de::{Error, Visitor};
+    use std::fmt;
+
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = Option<String>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("string, number, or null")
+        }
+        fn visit_none<E: Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_unit<E: Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_some<D2: serde::Deserializer<'de>>(self, d: D2) -> Result<Self::Value, D2::Error> {
+            d.deserialize_any(V)
+        }
+        fn visit_str<E: Error>(self, s: &str) -> Result<Self::Value, E> {
+            Ok(Some(s.to_string()))
+        }
+        fn visit_string<E: Error>(self, s: String) -> Result<Self::Value, E> {
+            Ok(Some(s))
+        }
+        fn visit_i64<E: Error>(self, v: i64) -> Result<Self::Value, E> {
+            Ok(Some(v.to_string()))
+        }
+        fn visit_u64<E: Error>(self, v: u64) -> Result<Self::Value, E> {
+            Ok(Some(v.to_string()))
+        }
+        fn visit_f64<E: Error>(self, v: f64) -> Result<Self::Value, E> {
+            Ok(Some(v.to_string()))
+        }
+    }
+    d.deserialize_any(V)
+}
+
 /// Field-like JSON value that may be a single value or an array of values.
 /// Upstream uses this for `font` at least. Custom deserializer accepts both.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -309,7 +354,18 @@ pub struct CharShape {
 #[serde(default, rename_all = "lowercase")]
 pub struct ParaShape {
     pub align: Option<String>,
-    pub linespacing: Option<Range64>,
+    /// Line-spacing **mode** (enum). Upstream `JID_PARA_SHAPE_LINESPACING`
+    /// (2007). Maps to the `type` attribute on `<hh:lineSpacing>`.
+    ///
+    /// Accepts multiple shapes (upstream's own samples are inconsistent):
+    ///   - jsonFullSpec.json style: "글자에 따라" / "고정값" / "여백만 지정" / "최소"
+    ///   - OWPML enum string: "PERCENT" / "FIXED" / "BETWEENLINES" / "ATLEAST"
+    ///   - test.json style: integer 0/1/2/3 (stored as decimal string
+    ///     internally; engine does a string compare against the OWPML
+    ///     attribute value)
+    #[serde(deserialize_with = "deserialize_opt_str_or_int")]
+    #[serde(default)]
+    pub linespacing: Option<String>,
     pub linespacingvalue: Option<Range64>,
     #[serde(rename = "spacing-paraup")]
     pub spacing_paraup: Option<Range64>,
