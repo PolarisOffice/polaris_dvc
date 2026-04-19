@@ -34,12 +34,15 @@ impl ErrorCode {
     }
 
     pub fn text(self) -> &'static str {
-        // Seed messages; expand via tools/gen_jids.rs from upstream JsonModel.h.
+        // Seed messages keyed by JID values from upstream `Source/JsonModel.h`.
+        // Expand via `tools/gen_jids.rs` against the vendored snapshot.
         match self.0 {
             1001 => "Font size does not match specification",
-            1002 => "Font name does not match specification",
-            1010 => "Bold setting does not match specification",
-            1011 => "Italic setting does not match specification",
+            1004 => "Font name does not match specification",
+            1009 => "Bold setting does not match specification",
+            1010 => "Italic setting does not match specification",
+            1011 => "Underline setting does not match specification",
+            1012 => "Strikeout setting does not match specification",
             2001 => "Paragraph alignment does not match specification",
             2050 => "Line spacing out of specification range",
             3001 => "Table width does not match specification",
@@ -47,6 +50,20 @@ impl ErrorCode {
             _ => "Rule violation",
         }
     }
+}
+
+/// Canonical errorCode constants covered by the initial engine. Names and
+/// integer values mirror `JID_*` in upstream `Source/JsonModel.h`.
+pub mod jid {
+    use super::ErrorCode;
+    pub const CHAR_SHAPE_FONTSIZE: ErrorCode = ErrorCode::new(1001);
+    pub const CHAR_SHAPE_FONT: ErrorCode = ErrorCode::new(1004);
+    pub const CHAR_SHAPE_BOLD: ErrorCode = ErrorCode::new(1009);
+    pub const CHAR_SHAPE_ITALIC: ErrorCode = ErrorCode::new(1010);
+    pub const CHAR_SHAPE_UNDERLINE: ErrorCode = ErrorCode::new(1011);
+    pub const CHAR_SHAPE_STRIKEOUT: ErrorCode = ErrorCode::new(1012);
+    pub const PARA_SHAPE_ALIGN: ErrorCode = ErrorCode::new(2001);
+    pub const PARA_SHAPE_LINESPACING: ErrorCode = ErrorCode::new(2050);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
