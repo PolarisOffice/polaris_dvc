@@ -45,6 +45,8 @@ jobs:
         #   site/app.js       (import path rewritten to ./pkg/)
         #   site/pkg/polaris_rhwpdvc.js
         #   site/pkg/polaris_rhwpdvc_bg.wasm
+        #   site/golden/<case>/{doc.hwpx,spec.json,expected.json,expected.xml}
+        #   site/golden/manifest.json   (case list for the UI's preset menu)
         # The local-dev layout uses `../../crates/.../pkg/` which only works
         # when the server is run from the repo root; this rewrite makes the
         # deployed site work from any path.
@@ -58,6 +60,15 @@ jobs:
           sed -i 's|\.\./\.\./crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc\.js|./pkg/polaris_rhwpdvc.js|' site/app.js
           # Sanity: confirm the rewrite landed.
           grep -F './pkg/polaris_rhwpdvc.js' site/app.js
+
+          # Golden fixtures: expose each case as a browsable triplet so
+          # the web UI can offer a "load golden case" preset. The
+          # manifest.json file (generated + committed by the
+          # `golden_cases` test — see `crates/polaris-rhwpdvc-core/tests/
+          # golden.rs::write_manifest`) ships as-is alongside the cases.
+          mkdir -p site/golden
+          cp -R testdata/golden/* site/golden/
+          echo "Manifest entries: $(jq length site/golden/manifest.json)"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -1,9 +1,14 @@
-//! WASM bindings — single `validate` entry point.
+//! WASM bindings for the polaris HWPX validator.
 //!
-//! Mirrors the CLI's surface: accept HWPX bytes + a rule spec, return a
-//! DVC-shaped JSON array. The return shape is `OutputOption::AllOption`
-//! so every conditional field (TableID/IsInTable/UseStyle/IsInShape/
-//! UseHyperlink) is present — JS consumers can filter as needed.
+//! Two entry points mirroring the CLI's JSON/XML outputs:
+//!
+//! ```js
+//! validate(bytes, spec, { dvcStrict, stopOnFirst, outputOption });  // → array
+//! validateXml(bytes, spec, opts);                                   // → string
+//! ```
+//!
+//! `opts` is optional; missing fields fall back to defaults (Extended
+//! profile, stop on nothing, `OutputOption::AllOption`).
 
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -12,11 +17,8 @@ use polaris_rhwpdvc_core::engine::{validate as run, CheckProfile, EngineOptions}
 use polaris_rhwpdvc_core::output::OutputOption;
 use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 
-/// Runtime options accepted by [`validate`]. All fields optional.
-///
-/// ```js
-/// validate(bytes, spec, { dvcStrict: true, stopOnFirst: false });
-/// ```
+/// Runtime options accepted by [`validate`] and [`validate_xml`].
+/// All fields optional.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct ValidateOpts {
@@ -25,10 +27,34 @@ struct ValidateOpts {
     dvc_strict: bool,
     /// Map to `EngineOptions::stop_on_first`.
     stop_on_first: bool,
+    /// Which conditional fields are emitted on each violation. Accepts
+    /// `"default"` / `"table"` / `"tableDetail"` (or `"table-detail"`) /
+    /// `"style"` / `"shape"` / `"hyperlink"` / `"all"`. Missing or
+    /// unrecognized falls back to `"all"` to preserve the historical
+    /// WASM default.
+    output_option: Option<String>,
 }
 
-#[wasm_bindgen]
-pub fn validate(hwpx: &[u8], spec: JsValue, opts: JsValue) -> Result<JsValue, JsError> {
+fn parse_output_option(s: Option<&str>) -> OutputOption {
+    match s.unwrap_or("all").to_ascii_lowercase().as_str() {
+        "default" => OutputOption::Default,
+        "table" => OutputOption::Table,
+        "tabledetail" | "table-detail" | "table_detail" => OutputOption::TableDetail,
+        "style" => OutputOption::Style,
+        "shape" => OutputOption::Shape,
+        "hyperlink" => OutputOption::Hyperlink,
+        _ => OutputOption::AllOption,
+    }
+}
+
+/// Shared setup: decode spec + opts, parse doc, run the engine, return the
+/// `Report` alongside the chosen output option so callers can shape the
+/// final serialization themselves.
+fn prepare(
+    hwpx: &[u8],
+    spec: JsValue,
+    opts: JsValue,
+) -> Result<(polaris_rhwpdvc_core::report::Report, OutputOption), JsError> {
     let spec: RuleSpec = if spec.is_undefined() || spec.is_null() {
         RuleSpec::default()
     } else {
@@ -54,8 +80,16 @@ pub fn validate(hwpx: &[u8], spec: JsValue, opts: JsValue) -> Result<JsValue, Js
         },
     };
 
+    let out_opt = parse_output_option(runtime_opts.output_option.as_deref());
     let report = run(&doc, &spec, &engine_opts);
-    let payload = report.to_json_value(OutputOption::AllOption);
+    Ok((report, out_opt))
+}
+
+/// DVC-shaped JSON output. Returns an array-valued `JsValue`.
+#[wasm_bindgen]
+pub fn validate(hwpx: &[u8], spec: JsValue, opts: JsValue) -> Result<JsValue, JsError> {
+    let (report, out_opt) = prepare(hwpx, spec, opts)?;
+    let payload = report.to_json_value(out_opt);
     // Default serde-wasm-bindgen serializer emits serde_json::Value as
     // an externally-tagged enum (`{"Object": {...}}`). The JSON-compatible
     // serializer flattens it to plain JS objects/arrays, which is what
@@ -64,4 +98,23 @@ pub fn validate(hwpx: &[u8], spec: JsValue, opts: JsValue) -> Result<JsValue, Js
     payload
         .serialize(&ser)
         .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Same as [`validate`] but returns the XML document string. This is a
+/// polaris extension — upstream DVC never implemented XML output — so
+/// callers using `dvcStrict: true` get an error mirroring the CLI's
+/// upstream-parity behavior.
+#[wasm_bindgen(js_name = validateXml)]
+pub fn validate_xml(hwpx: &[u8], spec: JsValue, opts: JsValue) -> Result<String, JsError> {
+    // Peek at the strict flag before running the engine so we fail fast
+    // with an upstream-matching message (cheap string compare on opts).
+    if let Ok(parsed) = serde_wasm_bindgen::from_value::<ValidateOpts>(opts.clone()) {
+        if parsed.dvc_strict {
+            return Err(JsError::new(
+                "--format=xml is not yet implemented (upstream DVC parity)",
+            ));
+        }
+    }
+    let (report, out_opt) = prepare(hwpx, spec, opts)?;
+    Ok(report.to_xml_string(out_opt))
 }

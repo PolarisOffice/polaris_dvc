@@ -90,17 +90,18 @@
         font-size: 13px;
         color: var(--muted);
       }
-      #file-input {
+      .hidden-file {
         display: none;
       }
-      #doc-info {
-        margin-top: 12px;
+      #doc-info,
+      #spec-info {
+        margin-top: 10px;
         font-size: 13px;
         color: var(--muted);
       }
       textarea {
         width: 100%;
-        min-height: 280px;
+        min-height: 240px;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 13px;
         padding: 12px;
@@ -108,23 +109,55 @@
         border-radius: 6px;
         resize: vertical;
       }
-      .spec-presets {
+      .toolbar {
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
         margin-bottom: 8px;
       }
-      .spec-presets button {
+      .toolbar button,
+      .toolbar select {
         font-size: 12px;
-        padding: 4px 10px;
+        padding: 5px 10px;
         border: 1px solid var(--border);
         background: var(--bg);
         border-radius: 4px;
         cursor: pointer;
       }
-      .spec-presets button:hover {
+      .toolbar button:hover,
+      .toolbar select:hover {
         background: #eff6ff;
         border-color: var(--accent);
+      }
+      .toolbar .sep {
+        flex: 1;
+      }
+      .options-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px 16px;
+        margin: 8px 0;
+      }
+      .options-grid label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .options-grid select {
+        font-size: 13px;
+        padding: 5px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--panel);
+      }
+      .options-grid .checkbox {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--fg);
       }
       .actions {
         display: flex;
@@ -164,6 +197,7 @@
         gap: 16px;
         margin-bottom: 12px;
         font-size: 14px;
+        align-items: center;
       }
       .results-summary .count {
         font-weight: 600;
@@ -235,8 +269,8 @@
     <header>
       <h1>polaris_rhwpdvc — HWPX validator</h1>
       <p>
-        Browser-side HWPX validation via wasm-bindgen. Drop an
-        <code>.hwpx</code>, edit the rule spec, click
+        Browser-side HWPX validation via wasm-bindgen. Pick a golden case,
+        drop your own <code>.hwpx</code>, or load a custom spec — then hit
         <strong>Validate</strong>.
       </p>
     </header>
@@ -246,33 +280,80 @@
         <div id="drop">
           <p><strong>Drop an .hwpx file here</strong></p>
           <p class="hint">or click to choose</p>
-          <input id="file-input" type="file" accept=".hwpx,.zip" />
+          <input id="doc-file-input" class="hidden-file" type="file" accept=".hwpx,.zip" />
         </div>
         <div id="doc-info">No file loaded.</div>
       </section>
       <section class="panel">
         <h2>2. Rule spec (JSON)</h2>
-        <div class="spec-presets">
+        <div class="toolbar">
           <button data-preset="minimal">Minimal</button>
-          <button data-preset="charshape">CharShape (font/size/bold)</button>
-          <button data-preset="table">Table (border + bgfill)</button>
+          <button data-preset="charshape">CharShape</button>
+          <button data-preset="table">Table</button>
           <button data-preset="all">All categories</button>
+          <span class="sep"></span>
+          <button id="load-spec-btn" title="Load a spec.json from disk">📂 Load…</button>
+          <button id="save-spec-btn" title="Download the current spec as spec.json">💾 Save</button>
+          <input id="spec-file-input" class="hidden-file" type="file" accept=".json" />
         </div>
         <textarea id="spec" spellcheck="false"></textarea>
+        <div id="spec-info"></div>
+      </section>
+
+      <section class="panel" style="grid-column: 1 / -1">
+        <h2>3. Options</h2>
+        <div class="options-grid">
+          <label>
+            Golden case
+            <select id="golden-preset">
+              <option value="">— none (use your own) —</option>
+            </select>
+          </label>
+          <label>
+            Output option
+            <select id="output-option">
+              <option value="all">AllOption (default)</option>
+              <option value="default">Default (base fields)</option>
+              <option value="table">Table</option>
+              <option value="tableDetail">Table detail</option>
+              <option value="style">Style</option>
+              <option value="shape">Shape</option>
+              <option value="hyperlink">Hyperlink</option>
+            </select>
+          </label>
+          <label>
+            Profile
+            <select id="profile">
+              <option value="extended">Extended (polaris superset)</option>
+              <option value="strict">DvcStrict (upstream parity)</option>
+            </select>
+          </label>
+          <label>
+            Output format
+            <select id="format">
+              <option value="json">JSON</option>
+              <option value="xml">XML</option>
+            </select>
+          </label>
+          <label class="checkbox">
+            <input id="stop-on-first" type="checkbox" />
+            Stop on first violation
+          </label>
+        </div>
         <div class="actions">
           <button id="run" class="primary" disabled>Validate</button>
-          <label
-            style="font-size: 13px; color: var(--muted); cursor: pointer"
-            title="Only emit JIDs that upstream DVC.exe actually checks. Drops our extended rules (margin-*, bgfill-*, bggradation-*, caption-*, horizontal)."
-          >
-            <input id="dvc-strict" type="checkbox" />
-            DVC strict
-          </label>
           <span id="status">Loading WASM…</span>
         </div>
       </section>
+
       <section class="panel" style="grid-column: 1 / -1">
-        <h2>3. Results</h2>
+        <h2>4. Results</h2>
+        <div class="toolbar" id="result-toolbar" style="display: none">
+          <button id="download-json-btn">⬇ Download JSON</button>
+          <button id="download-xml-btn">⬇ Download XML</button>
+          <span class="sep"></span>
+          <button id="diff-expected-btn" title="Compare against the golden case's expected output" style="display: none">🔍 Diff vs expected</button>
+        </div>
         <div id="results">
           <div class="empty">Run a validation to see results.</div>
         </div>

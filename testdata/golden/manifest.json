@@ -1,0 +1,166 @@
+[
+  {
+    "name": "01_clean",
+    "label": "01 · clean"
+  },
+  {
+    "name": "02_fontsize_mismatch",
+    "label": "02 · fontsize mismatch"
+  },
+  {
+    "name": "03_bold_mismatch",
+    "label": "03 · bold mismatch"
+  },
+  {
+    "name": "04_font_allowlist_miss",
+    "label": "04 · font allowlist miss"
+  },
+  {
+    "name": "05_font_allowlist_hit",
+    "label": "05 · font allowlist hit"
+  },
+  {
+    "name": "06_linespacing_mismatch",
+    "label": "06 · linespacing mismatch"
+  },
+  {
+    "name": "07_mixed_paragraphs",
+    "label": "07 · mixed paragraphs"
+  },
+  {
+    "name": "08_style_forbidden",
+    "label": "08 · style forbidden"
+  },
+  {
+    "name": "09_hyperlink_forbidden",
+    "label": "09 · hyperlink forbidden"
+  },
+  {
+    "name": "10_macro_forbidden",
+    "label": "10 · macro forbidden"
+  },
+  {
+    "name": "11_table_border_type_mismatch",
+    "label": "11 · table border type mismatch"
+  },
+  {
+    "name": "12_lone_table_with_table_in_table_rule",
+    "label": "12 · lone table with table in table rule"
+  },
+  {
+    "name": "13_charshape_ratio_mismatch",
+    "label": "13 · charshape ratio mismatch"
+  },
+  {
+    "name": "14_parashape_indent_mismatch",
+    "label": "14 · parashape indent mismatch"
+  },
+  {
+    "name": "15_specialcharacter_below_minimum",
+    "label": "15 · specialcharacter below minimum"
+  },
+  {
+    "name": "16_bullet_char_not_allowed",
+    "label": "16 · bullet char not allowed"
+  },
+  {
+    "name": "17_outlineshape_numtype_mismatch",
+    "label": "17 · outlineshape numtype mismatch"
+  },
+  {
+    "name": "18_paranumbullet_numshape_mismatch",
+    "label": "18 · paranumbullet numshape mismatch"
+  },
+  {
+    "name": "19_fontsize_range_ok",
+    "label": "19 · fontsize range ok"
+  },
+  {
+    "name": "20_fontsize_range_above_max",
+    "label": "20 · fontsize range above max"
+  },
+  {
+    "name": "21_table_size_width_mismatch",
+    "label": "21 · table size width mismatch"
+  },
+  {
+    "name": "22_table_margin_range_ok",
+    "label": "22 · table margin range ok"
+  },
+  {
+    "name": "23_table_treat_as_char_mismatch",
+    "label": "23 · table treat as char mismatch"
+  },
+  {
+    "name": "24_table_bgfill_type_mismatch",
+    "label": "24 · table bgfill type mismatch"
+  },
+  {
+    "name": "25_table_bgfill_facecolor_mismatch",
+    "label": "25 · table bgfill facecolor mismatch"
+  },
+  {
+    "name": "26_table_bgfill_type_strict_filters_out",
+    "label": "26 · table bgfill type strict filters out"
+  },
+  {
+    "name": "27_charshape_emboss_mismatch",
+    "label": "27 · charshape emboss mismatch"
+  },
+  {
+    "name": "28_charshape_shadow_mismatch",
+    "label": "28 · charshape shadow mismatch"
+  },
+  {
+    "name": "29_charshape_shadowtype_mismatch",
+    "label": "29 · charshape shadowtype mismatch"
+  },
+  {
+    "name": "30_charshape_shadow_x_outside_range",
+    "label": "30 · charshape shadow x outside range"
+  },
+  {
+    "name": "31_charshape_shadow_color_mismatch",
+    "label": "31 · charshape shadow color mismatch"
+  },
+  {
+    "name": "32_charshape_rsize_mismatch",
+    "label": "32 · charshape rsize mismatch"
+  },
+  {
+    "name": "33_charshape_kerning_mismatch",
+    "label": "33 · charshape kerning mismatch"
+  },
+  {
+    "name": "34_table_pos_mismatch",
+    "label": "34 · table pos mismatch"
+  },
+  {
+    "name": "35_table_textpos_mismatch",
+    "label": "35 · table textpos mismatch"
+  },
+  {
+    "name": "36_table_size_fixed_mismatch",
+    "label": "36 · table size fixed mismatch"
+  },
+  {
+    "name": "37_parashape_linespacing_mode_mismatch",
+    "label": "37 · parashape linespacing mode mismatch"
+  },
+  {
+    "name": "38_shape_scope_bold_mismatch",
+    "label": "38 · shape scope bold mismatch"
+  },
+  {
+    "name": "39_footnote_scope_bold_mismatch",
+    "label": "39 · footnote scope bold mismatch"
+  },
+  {
+    "name": "40_endnote_scope_bold_mismatch",
+    "label": "40 · endnote scope bold mismatch"
+  },
+  {
+    "name": "41_charshape_violation_in_styled_paragraph",
+    "label": "41 · charshape violation in styled paragraph"
+  }
+]

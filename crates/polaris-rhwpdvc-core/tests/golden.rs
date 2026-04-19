@@ -875,6 +875,60 @@ fn golden_cases() {
             case.name
         );
     }
+
+    if regenerate() {
+        write_manifest(&root);
+    } else {
+        // Drift check: the committed manifest must match what we'd
+        // regenerate right now. Catches "added a golden case but forgot
+        // POLARIS_REGEN_FIXTURES" errors.
+        let committed = fs::read_to_string(root.join("manifest.json"))
+            .unwrap_or_else(|_| panic!("missing manifest.json — run POLARIS_REGEN_FIXTURES=1"));
+        let expected = build_manifest();
+        assert_eq!(
+            committed, expected,
+            "manifest.json drift — regenerate with POLARIS_REGEN_FIXTURES=1"
+        );
+    }
+}
+
+/// Build the golden manifest JSON the web UI and Pages deploy read.
+/// Keep the output shape identical to what `.github/workflows/pages.yml`
+/// generates (sorted case list, `{name,label}` entries) so the site
+/// stays consistent whether local-dev loads it or Pages does.
+fn build_manifest() -> String {
+    let mut entries: Vec<(String, String)> = cases()
+        .iter()
+        .map(|c| (c.name.to_string(), humanize_case_name(c.name)))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut s = String::from("[\n");
+    for (i, (name, label)) in entries.iter().enumerate() {
+        s.push_str(&format!(
+            "  {{\n    \"name\": \"{}\",\n    \"label\": \"{}\"\n  }}",
+            name, label
+        ));
+        if i + 1 < entries.len() {
+            s.push(',');
+        }
+        s.push('\n');
+    }
+    s.push_str("]\n");
+    s
+}
+
+fn humanize_case_name(name: &str) -> String {
+    // "24_table_bgfill_type_mismatch" -> "24 · table bgfill type mismatch"
+    match name.split_once('_') {
+        Some((num, rest)) if num.chars().all(|c| c.is_ascii_digit()) => {
+            format!("{} · {}", num, rest.replace('_', " "))
+        }
+        _ => name.to_string(),
+    }
+}
+
+fn write_manifest(root: &Path) {
+    fs::write(root.join("manifest.json"), build_manifest()).unwrap();
 }
 
 /// Sanity: every golden case directory on disk must correspond to a
