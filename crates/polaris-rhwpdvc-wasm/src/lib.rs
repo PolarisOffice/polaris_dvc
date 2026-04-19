@@ -5,6 +5,7 @@
 //! so every conditional field (TableID/IsInTable/UseStyle/IsInShape/
 //! UseHyperlink) is present — JS consumers can filter as needed.
 
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use polaris_rhwpdvc_core::engine::{validate as run, EngineOptions};
@@ -25,5 +26,12 @@ pub fn validate(hwpx: &[u8], spec: JsValue) -> Result<JsValue, JsError> {
 
     let report = run(&doc, &spec, &EngineOptions::default());
     let payload = report.to_json_value(OutputOption::AllOption);
-    serde_wasm_bindgen::to_value(&payload).map_err(|e| JsError::new(&e.to_string()))
+    // Default serde-wasm-bindgen serializer emits serde_json::Value as
+    // an externally-tagged enum (`{"Object": {...}}`). The JSON-compatible
+    // serializer flattens it to plain JS objects/arrays, which is what
+    // browser consumers expect.
+    let ser = serde_wasm_bindgen::Serializer::json_compatible();
+    payload
+        .serialize(&ser)
+        .map_err(|e| JsError::new(&e.to_string()))
 }
