@@ -1,5 +1,5 @@
 [package]
-name = "polaris-wasm"
+name = "polaris-rhwpdvc-wasm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -30,9 +30,9 @@ serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-polaris-core = { workspace = true }
-polaris-hwpx = { workspace = true }
-polaris-format = { workspace = true }
+polaris-rhwpdvc-core = { workspace = true }
+polaris-rhwpdvc-hwpx = { workspace = true }
+polaris-rhwpdvc-format = { workspace = true }
 
 # Ensure getrandom uses the JS shim when compiling to wasm32.
 [target.'cfg(target_arch = "wasm32")'.dependencies]

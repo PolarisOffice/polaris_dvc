@@ -1,4 +1,4 @@
-//! polaris-hwpx: pure-Rust HWPX (OWPML) parser.
+//! polaris-rhwpdvc-hwpx: pure-Rust HWPX (OWPML) parser.
 //!
 //! Byte-input API. No filesystem dependence, so the same code path works on
 //! native and WASM targets. Upstream reference: `Source/OWPMLReader.*`.

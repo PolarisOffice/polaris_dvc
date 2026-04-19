@@ -19,9 +19,9 @@ mod support;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use polaris_core::engine::{validate, EngineOptions};
-use polaris_core::output::OutputOption;
-use polaris_core::rules::schema::RuleSpec;
+use polaris_rhwpdvc_core::engine::{validate, EngineOptions};
+use polaris_rhwpdvc_core::output::OutputOption;
+use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 use serde_json::Value;
 
 use support::{
@@ -470,7 +470,7 @@ fn golden_cases() {
         let hwpx_bytes = fixture.to_hwpx_bytes();
         let spec: RuleSpec = serde_json::from_str(case.spec).expect("case spec parses");
 
-        let doc = polaris_hwpx::open_bytes(&hwpx_bytes).expect("fixture parses");
+        let doc = polaris_rhwpdvc_hwpx::open_bytes(&hwpx_bytes).expect("fixture parses");
         let report = validate(&doc, &spec, &EngineOptions::default());
         let actual = report.to_json_value(OutputOption::AllOption);
 

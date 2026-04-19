@@ -28,7 +28,9 @@ use crate::rules::schema::{
     BorderRule, BulletSpec, CharShape, LevelType, ParaShape, RuleSpec, SpecialCharacter, TableSpec,
 };
 
-use polaris_hwpx::{Border, BorderFill, CharPr, HwpxDocument, ParaPr, Paragraph, Run, Table};
+use polaris_rhwpdvc_hwpx::{
+    Border, BorderFill, CharPr, HwpxDocument, ParaPr, Paragraph, Run, Table,
+};
 
 #[derive(Default)]
 pub struct EngineOptions {
@@ -1014,7 +1016,7 @@ fn violation_for(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polaris_hwpx::{CharPr, FaceName, FontRef, Header, HwpxDocument, ParaPr};
+    use polaris_rhwpdvc_hwpx::{CharPr, FaceName, FontRef, Header, HwpxDocument, ParaPr};
 
     fn make_doc(char_pr: CharPr, para_pr: ParaPr, text: &str) -> HwpxDocument {
         let mut header = Header::default();
@@ -1025,19 +1027,19 @@ mod tests {
         });
         header.char_shapes.push(char_pr);
         header.para_shapes.push(para_pr);
-        let run = polaris_hwpx::Run {
+        let run = polaris_rhwpdvc_hwpx::Run {
             char_pr_id_ref: 0,
             text: text.into(),
             is_hyperlink: false,
         };
-        let paragraph = polaris_hwpx::Paragraph {
+        let paragraph = polaris_rhwpdvc_hwpx::Paragraph {
             id: 0,
             para_pr_id_ref: 0,
             style_id_ref: 0,
             runs: vec![run],
             line_segs: Vec::new(),
         };
-        let section = polaris_hwpx::Section {
+        let section = polaris_rhwpdvc_hwpx::Section {
             paragraphs: vec![paragraph],
             tables: Vec::new(),
         };
@@ -1130,7 +1132,7 @@ mod tests {
 
     #[test]
     fn page_line_accumulates_across_paragraphs() {
-        use polaris_hwpx::{LineSeg, Paragraph, Run, Section};
+        use polaris_rhwpdvc_hwpx::{LineSeg, Paragraph, Run, Section};
 
         let mut header = Header::default();
         header.face_names.push(FaceName {
@@ -1198,7 +1200,7 @@ mod tests {
 
     #[test]
     fn page_break_when_vertpos_resets_to_zero() {
-        use polaris_hwpx::{LineSeg, Paragraph, Run, Section};
+        use polaris_rhwpdvc_hwpx::{LineSeg, Paragraph, Run, Section};
 
         let mut header = Header::default();
         header.face_names.push(FaceName {
@@ -1254,7 +1256,7 @@ mod tests {
 
     #[test]
     fn table_border_type_mismatch_emits_3033() {
-        use polaris_hwpx::{Border, BorderFill, Section, Table};
+        use polaris_rhwpdvc_hwpx::{Border, BorderFill, Section, Table};
 
         let mut header = Header::default();
         header.border_fills.push(BorderFill {
@@ -1310,7 +1312,7 @@ mod tests {
 
     #[test]
     fn table_in_table_forbidden_emits_3056() {
-        use polaris_hwpx::{Section, Table};
+        use polaris_rhwpdvc_hwpx::{Section, Table};
 
         let doc = HwpxDocument {
             mimetype: "application/hwp+zip".into(),

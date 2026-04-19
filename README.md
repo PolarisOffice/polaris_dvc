@@ -17,7 +17,7 @@
 - Linux · macOS · `wasm32-unknown-unknown` 타깃 동시 지원
 - 업스트림 CLI 플래그(`-j`, `-x`, `--file=`, `-s`, `-a`, `-t <spec>`) 호환
 
-레거시 HWP 5.0 바이너리 포맷은 `polaris-format` 에서 감지만 하고 `Hwp5NotImplemented` 를 반환한다. 별도 crate 로 후속 버전에서 붙인다.
+레거시 HWP 5.0 바이너리 포맷은 `polaris-rhwpdvc-format` 에서 감지만 하고 `Hwp5NotImplemented` 를 반환한다. 별도 crate 로 후속 버전에서 붙인다.
 
 ## 2.0 이후 방향
 
@@ -28,7 +28,7 @@
 | 항목 | 호환 수준 |
 |---|---|
 | 규칙 JSON 스키마 | `third_party/dvc-upstream/sample/jsonFullSpec.json` 과 동일 키 체계 |
-| errorCode | JID 1000~10999 블록 동일 (`polaris-core` `ErrorCode`) |
+| errorCode | JID 1000~10999 블록 동일 (`polaris-rhwpdvc-core` `ErrorCode`) |
 | 출력 JSON | 필드명·구조 동일 |
 | HWPX | Phase 3~ 구현 중 (진행 상황은 `docs/parity-roadmap.md` 참고) |
 | HWP 5.0 바이너리 | 감지만, 파싱은 미구현 |
@@ -38,11 +38,11 @@
 
 ```
 crates/
-├── polaris-core/     규칙·에러코드·엔진·출력 모델
-├── polaris-hwpx/     HWPX(OWPML) 순수 Rust 파서
-├── polaris-format/   포맷 감지 + DocumentParser trait (HWP5 확장 슬롯)
-├── polaris-cli/      DVC 호환 CLI (polaris)
-└── polaris-wasm/     wasm-bindgen 래퍼
+├── polaris-rhwpdvc-core/     규칙·에러코드·엔진·출력 모델
+├── polaris-rhwpdvc-hwpx/     HWPX(OWPML) 순수 Rust 파서
+├── polaris-rhwpdvc-format/   포맷 감지 + DocumentParser trait (HWP5 확장 슬롯)
+├── polaris-rhwpdvc-cli/      DVC 호환 CLI (polaris)
+└── polaris-rhwpdvc-wasm/     wasm-bindgen 래퍼
 ```
 
 ## 빌드
@@ -55,7 +55,7 @@ cargo test  --workspace
 ### CLI
 
 ```sh
-cargo run -p polaris-cli -- -j -t schemas/jsonFullSpec.json path/to/document.hwpx
+cargo run -p polaris-rhwpdvc-cli -- -j -t schemas/jsonFullSpec.json path/to/document.hwpx
 ```
 
 플래그는 업스트림 DVC 와 동일하다 (`-j`, `-x`, `--file=`, `-s`, `-a`, `-t <spec>`).
@@ -63,8 +63,8 @@ cargo run -p polaris-cli -- -j -t schemas/jsonFullSpec.json path/to/document.hwp
 ### WASM
 
 ```sh
-wasm-pack build crates/polaris-wasm --target web
-wasm-pack build crates/polaris-wasm --target nodejs
+wasm-pack build crates/polaris-rhwpdvc-wasm --target web
+wasm-pack build crates/polaris-rhwpdvc-wasm --target nodejs
 ```
 
 ## 상태

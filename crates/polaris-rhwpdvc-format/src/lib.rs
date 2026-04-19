@@ -1,6 +1,6 @@
 //! Format detection and a future-friendly parser dispatch layer.
 //!
-//! HWPX is implemented in `polaris-hwpx`. The HWP 5.0 legacy binary format
+//! HWPX is implemented in `polaris-rhwpdvc-hwpx`. The HWP 5.0 legacy binary format
 //! (OLE2/CFB) is out of the initial scope but reserved behind the `hwp5`
 //! feature so dispatch code can be wired in later without API churn.
 
@@ -9,7 +9,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ParseError {
     #[error("HWPX parse error: {0}")]
-    Hwpx(#[from] polaris_hwpx::HwpxError),
+    Hwpx(#[from] polaris_rhwpdvc_hwpx::HwpxError),
     #[error("HWP 5.0 (OLE2/CFB) parsing is not implemented in this build")]
     Hwp5NotImplemented,
     #[error("unknown document format")]
@@ -37,12 +37,12 @@ pub fn sniff(bytes: &[u8]) -> DocumentFormat {
 
 #[derive(Debug)]
 pub enum Document {
-    Hwpx(polaris_hwpx::HwpxDocument),
+    Hwpx(polaris_rhwpdvc_hwpx::HwpxDocument),
 }
 
 pub fn parse(bytes: &[u8]) -> Result<Document, ParseError> {
     match sniff(bytes) {
-        DocumentFormat::Hwpx => Ok(Document::Hwpx(polaris_hwpx::open_bytes(bytes)?)),
+        DocumentFormat::Hwpx => Ok(Document::Hwpx(polaris_rhwpdvc_hwpx::open_bytes(bytes)?)),
         DocumentFormat::Hwp5 => Err(ParseError::Hwp5NotImplemented),
         DocumentFormat::Unknown => Err(ParseError::UnknownFormat),
     }

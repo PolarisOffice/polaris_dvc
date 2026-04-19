@@ -7,9 +7,9 @@
 
 use wasm_bindgen::prelude::*;
 
-use polaris_core::engine::{validate as run, EngineOptions};
-use polaris_core::output::OutputOption;
-use polaris_core::rules::schema::RuleSpec;
+use polaris_rhwpdvc_core::engine::{validate as run, EngineOptions};
+use polaris_rhwpdvc_core::output::OutputOption;
+use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 
 #[wasm_bindgen]
 pub fn validate(hwpx: &[u8], spec: JsValue) -> Result<JsValue, JsError> {
@@ -19,8 +19,8 @@ pub fn validate(hwpx: &[u8], spec: JsValue) -> Result<JsValue, JsError> {
         serde_wasm_bindgen::from_value(spec).map_err(|e| JsError::new(&e.to_string()))?
     };
 
-    let doc = match polaris_format::parse(hwpx).map_err(|e| JsError::new(&e.to_string()))? {
-        polaris_format::Document::Hwpx(d) => d,
+    let doc = match polaris_rhwpdvc_format::parse(hwpx).map_err(|e| JsError::new(&e.to_string()))? {
+        polaris_rhwpdvc_format::Document::Hwpx(d) => d,
     };
 
     let report = run(&doc, &spec, &EngineOptions::default());

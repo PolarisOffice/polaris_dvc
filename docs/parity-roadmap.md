@@ -116,7 +116,7 @@ Style/Shape/Hyperlink/AllOption 7개. 우린 `OutputOption` enum만 있고
 CLI엔 연결 안 됨.
 
 **할 일**:
-- `polaris-cli`에 `--output-option=table,style,shape,hyperlink,all`
+- `polaris-rhwpdvc-cli`에 `--output-option=table,style,shape,hyperlink,all`
 - 각 모드에서 어떤 필드 포함되는지는 이미 `ViolationRecord::to_json_value`
   에 구현
 

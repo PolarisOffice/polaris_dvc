@@ -4,9 +4,9 @@
 
 use std::io::{Cursor, Write};
 
-use polaris_core::engine::{validate, EngineOptions};
-use polaris_core::output::OutputOption;
-use polaris_core::rules::schema::RuleSpec;
+use polaris_rhwpdvc_core::engine::{validate, EngineOptions};
+use polaris_rhwpdvc_core::output::OutputOption;
+use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 use zip::write::FileOptions;
 use zip::ZipWriter;
 
@@ -96,7 +96,7 @@ fn build_hwpx() -> Vec<u8> {
 #[test]
 fn full_pipeline_detects_expected_violations() {
     let bytes = build_hwpx();
-    let doc = polaris_hwpx::open_bytes(&bytes).expect("parse synthetic HWPX");
+    let doc = polaris_rhwpdvc_hwpx::open_bytes(&bytes).expect("parse synthetic HWPX");
     let spec: RuleSpec = serde_json::from_str(
         r#"{"charshape":{"font":"바탕","fontsize":10,"bold":false},
              "parashape":{"linespacingvalue":160}}"#,
@@ -134,7 +134,7 @@ fn full_pipeline_detects_expected_violations() {
 #[test]
 fn full_pipeline_json_output_shape() {
     let bytes = build_hwpx();
-    let doc = polaris_hwpx::open_bytes(&bytes).unwrap();
+    let doc = polaris_rhwpdvc_hwpx::open_bytes(&bytes).unwrap();
     let spec: RuleSpec = serde_json::from_str(r#"{"charshape":{"fontsize":10}}"#).unwrap();
     let report = validate(&doc, &spec, &EngineOptions::default());
 
@@ -161,7 +161,7 @@ fn full_pipeline_json_output_shape() {
 #[test]
 fn clean_document_produces_empty_array() {
     let bytes = build_hwpx();
-    let doc = polaris_hwpx::open_bytes(&bytes).unwrap();
+    let doc = polaris_rhwpdvc_hwpx::open_bytes(&bytes).unwrap();
     // Spec only constrains something that's already fine.
     let spec: RuleSpec = serde_json::from_str(r#"{"charshape":{"font":"바탕"}}"#).unwrap();
     let report = validate(&doc, &spec, &EngineOptions::default());

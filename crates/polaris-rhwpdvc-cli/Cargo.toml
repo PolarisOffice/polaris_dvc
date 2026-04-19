@@ -1,5 +1,5 @@
 [package]
-name = "polaris-cli"
+name = "polaris-rhwpdvc-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,13 +9,13 @@ authors.workspace = true
 description = "DVC-compatible CLI frontend for the polaris HWPX validator."
 
 [[bin]]
-name = "polaris"
+name = "polaris-rhwpdvc"
 path = "src/main.rs"
 
 [dependencies]
 clap = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-polaris-core = { workspace = true }
-polaris-hwpx = { workspace = true }
-polaris-format = { workspace = true }
+polaris-rhwpdvc-core = { workspace = true }
+polaris-rhwpdvc-hwpx = { workspace = true }
+polaris-rhwpdvc-format = { workspace = true }

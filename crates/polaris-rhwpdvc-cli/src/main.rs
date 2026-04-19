@@ -17,7 +17,7 @@ enum Format {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "polaris",
+    name = "polaris-rhwpdvc",
     version,
     about = "HWPX validator (DVC-compatible). See docs/cli-compat.md."
 )]
@@ -64,52 +64,52 @@ fn main() -> ExitCode {
         (None, false) => Format::Json,
     };
     if matches!(format, Format::Xml) {
-        eprintln!("polaris: --format=xml is not yet implemented");
+        eprintln!("polaris-rhwpdvc: --format=xml is not yet implemented");
         return ExitCode::from(2);
     }
 
     let Some(input) = cli.input else {
-        eprintln!("polaris: input path is required");
+        eprintln!("polaris-rhwpdvc: input path is required");
         return ExitCode::from(2);
     };
 
     let doc_bytes = match read_input(&input) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("polaris: failed to read input: {e}");
+            eprintln!("polaris-rhwpdvc: failed to read input: {e}");
             return ExitCode::from(3);
         }
     };
 
-    let doc = match polaris_format::parse(&doc_bytes) {
-        Ok(polaris_format::Document::Hwpx(d)) => d,
+    let doc = match polaris_rhwpdvc_format::parse(&doc_bytes) {
+        Ok(polaris_rhwpdvc_format::Document::Hwpx(d)) => d,
         Err(e) => {
-            eprintln!("polaris: parse error: {e}");
+            eprintln!("polaris-rhwpdvc: parse error: {e}");
             return ExitCode::from(3);
         }
     };
 
     let spec = match cli.spec {
-        Some(p) => match polaris_core::rules::loader::load_spec_from_path(&p) {
+        Some(p) => match polaris_rhwpdvc_core::rules::loader::load_spec_from_path(&p) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("polaris: failed to load spec: {e}");
+                eprintln!("polaris-rhwpdvc: failed to load spec: {e}");
                 return ExitCode::from(2);
             }
         },
-        None => polaris_core::rules::schema::RuleSpec::default(),
+        None => polaris_rhwpdvc_core::rules::schema::RuleSpec::default(),
     };
 
-    let opts = polaris_core::engine::EngineOptions {
+    let opts = polaris_rhwpdvc_core::engine::EngineOptions {
         stop_on_first: cli.simple,
     };
-    let report = polaris_core::engine::validate(&doc, &spec, &opts);
+    let report = polaris_rhwpdvc_core::engine::validate(&doc, &spec, &opts);
 
-    let payload = report.to_json_value(polaris_core::output::OutputOption::AllOption);
+    let payload = report.to_json_value(polaris_rhwpdvc_core::output::OutputOption::AllOption);
     let json = serde_json::to_string_pretty(&payload).expect("serialize report");
     if let Some(path) = cli.file {
         if let Err(e) = std::fs::write(&path, json.as_bytes()) {
-            eprintln!("polaris: failed to write output: {e}");
+            eprintln!("polaris-rhwpdvc: failed to write output: {e}");
             return ExitCode::from(3);
         }
     } else {

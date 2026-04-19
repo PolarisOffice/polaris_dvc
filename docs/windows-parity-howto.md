@@ -76,7 +76,7 @@ git diff testdata\golden\*\expected.json
 # … 코드 수정 …
 
 # 전체 회귀 (Mac/Linux에서도 가능)
-cargo test -p polaris-core --test golden
+cargo test -p polaris-rhwpdvc-core --test golden
 ```
 
 ## 스크립트가 실패할 때 (알려진 이슈)

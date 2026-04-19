@@ -1,4 +1,4 @@
-//! Drift check: every value in `crates/polaris-core/src/jid_registry.rs`
+//! Drift check: every value in `crates/polaris-rhwpdvc-core/src/jid_registry.rs`
 //! must equal the matching `#define JID_*` in the upstream header. A
 //! divergence here means either the vendored snapshot moved without a
 //! regen, or someone edited the generated file by hand.
@@ -31,7 +31,7 @@ fn generated_jid_values_match_upstream_header() {
     let root = repo_root();
     let header = fs::read_to_string(root.join("third_party/dvc-upstream/Source/JsonModel.h"))
         .expect("upstream header");
-    let generated = fs::read_to_string(root.join("crates/polaris-core/src/jid_registry.rs"))
+    let generated = fs::read_to_string(root.join("crates/polaris-rhwpdvc-core/src/jid_registry.rs"))
         .expect("generated registry");
 
     let upstream = parse_upstream(&header);

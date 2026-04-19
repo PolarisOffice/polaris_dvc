@@ -1,4 +1,4 @@
-//! polaris-core: rule engine, error-code registry, and DVC-compatible output model.
+//! polaris-rhwpdvc-core: rule engine, error-code registry, and DVC-compatible output model.
 //!
 //! Upstream reference: hancom-io/dvc (`Source/Checker.*`, `Source/DVCOutputJson.*`,
 //! `Source/JsonModel.h`). See `/docs/` and the repo NOTICE file.

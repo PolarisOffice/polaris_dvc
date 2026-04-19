@@ -1,15 +1,17 @@
 [package]
-name = "polaris-hwpx"
+name = "polaris-rhwpdvc-format"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Pure-Rust HWPX (OWPML) parser. Byte-input API suitable for WASM."
+description = "Format detection and DocumentParser trait. HWPX today, HWP 5.0 slot reserved."
 
 [dependencies]
-zip = { workspace = true }
-quick-xml = { workspace = true }
 thiserror = { workspace = true }
-serde = { workspace = true }
+polaris-rhwpdvc-hwpx = { workspace = true }
+
+[features]
+default = []
+hwp5 = []
