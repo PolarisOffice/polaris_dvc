@@ -85,19 +85,15 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Disable precompiled headers in upstream vcxproj files
+      - name: Disable stdafx PCH in OWPML vcxprojs only
         shell: bash
-        # v141 (VS2017) auto-recognized `stdafx.h`/`stdafx.cpp` as the
-        # default PCH source/header; v143 (VS2022) changed the default
-        # to `pch.h`/`pch.cpp`. Upstream's OWPMLUtil.vcxproj leans on
-        # the old convention, so compiles fail with C1010 "unexpected
-        # end of file while looking for precompiled header" when we
-        # retarget to v143. Rewriting every `<PrecompiledHeader>Use`
-        # to `NotUsing` sidesteps the whole PCH path — v143 just does
-        # plain compiles with a modest build-time hit.
+        # OWPML uses the v141-default `stdafx.h`/`stdafx.cpp` PCH pair
+        # which v143 no longer auto-recognizes (it now defaults to
+        # `pch.h`). Disable PCH only for those projects — DVCModel itself
+        # uses `pch.h` correctly and stays untouched.
         run: |
           set -euo pipefail
-          cd dvc
+          cd dvc/opensource/hwpx-owpml-model
           find . -name '*.vcxproj' -print0 | while IFS= read -r -d '' p; do
               if grep -q 'PrecompiledHeader' "$p"; then
                   sed -i \
@@ -107,6 +103,25 @@ jobs:
                   echo "patched: $p"
               fi
           done
+
+      - name: Install jsoncpp via vcpkg (x86-windows)
+        shell: pwsh
+        # Upstream's Release|Win32 config looks for jsoncpp at
+        # `./opensource/vcpkg/packages/jsoncpp_x86-windows/...`. We
+        # don't vendor vcpkg, so use the windows-latest-preinstalled
+        # vcpkg to install jsoncpp, then symlink/copy the install tree
+        # into the expected `dvc/opensource/vcpkg/...` layout.
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkgRoot) { $vcpkgRoot = 'C:\vcpkg' }
+          Write-Host "vcpkg root: $vcpkgRoot"
+          & "$vcpkgRoot\vcpkg" install jsoncpp:x86-windows --recurse
+          $pkgSrc = "$vcpkgRoot\packages\jsoncpp_x86-windows"
+          $pkgDst = "dvc\opensource\vcpkg\packages\jsoncpp_x86-windows"
+          New-Item -ItemType Directory -Force -Path (Split-Path $pkgDst) | Out-Null
+          Copy-Item -Recurse -Force $pkgSrc $pkgDst
+          Write-Host "copied jsoncpp package:"
+          Get-ChildItem $pkgDst -Recurse -Depth 2 | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
 
       - name: Detect installed Windows SDK
         id: sdk
