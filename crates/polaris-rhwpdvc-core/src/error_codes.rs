@@ -98,6 +98,7 @@ impl ErrorCode {
             3034 => "Table border size does not match specification",
             3035 => "Table border color does not match specification",
             3056 => "Table-in-table is not permitted",
+            3100 => "Character code point outside specification range",
             3101 => "Character code point below specification minimum",
             3102 => "Character code point above specification maximum",
             3206 => "Outline numbering type does not match specification",
@@ -174,6 +175,12 @@ pub mod jid {
     pub const TABLE_BGFILL_FACECOLOR: ErrorCode = r::JID_TABLE_BGFILL_FACECOLOR;
     pub const TABLE_BGFILL_PATTONCOLOR: ErrorCode = r::JID_TABLE_BGFILL_PATTONCOLOR;
     pub const TABLE_BGFILL_PATTONTYPE: ErrorCode = r::JID_TABLE_BGFILL_PATTONTYPE;
+    /// Upstream `Checker::CheckSpacialCharacterToCheckList` pushes one
+    /// `JID_SPECIALCHARACTER` (3100) per offending code point, regardless
+    /// of whether the violation is min- or max-sided. The MINIMUM/MAXIMUM
+    /// aliases exist in the registry for schema parsing but shouldn't be
+    /// emitted by the engine — use `SPECIAL_CHARACTER` instead.
+    pub const SPECIAL_CHARACTER: ErrorCode = r::JID_SPECIALCHARACTER;
     pub const SPECIAL_CHAR_MINIMUM: ErrorCode = r::JID_SPECIALCHARACTER_MINIMUM;
     pub const SPECIAL_CHAR_MAXIMUM: ErrorCode = r::JID_SPECIALCHARACTER_MAXIMUM;
     pub const OUTLINESHAPE_NUMBERTYPE: ErrorCode = r::JID_OUTLINESHAPE_LEVELTYPE_NUMBERTYPE;

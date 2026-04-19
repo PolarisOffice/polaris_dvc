@@ -1303,58 +1303,30 @@ fn check_special_character(
     run: &Run,
     spec: &SpecialCharacter,
 ) -> bool {
-    // Scan each Unicode scalar in the run's text. Reports at most one
-    // violation per bound per run — the first offending code point wins.
-    // This matches upstream behavior where `errorText` is the offending
-    // run's text rather than the individual character.
-    let mut below: Option<u32> = None;
-    let mut above: Option<u32> = None;
+    // Matches upstream `CheckSpacialCharacterToCheckList`: one
+    // `JID_SPECIALCHARACTER` (3100) push per offending code point,
+    // regardless of whether the violation is min- or max-sided.
+    // `errorText` is the run's full text (populated by the common
+    // `violation_for` helper), so multiple violations for the same run
+    // share the same `errorText` — identical to upstream's behavior.
     for ch in run.text.chars() {
         let cp = ch as u32;
-        if let Some(min) = spec.minimum {
-            if cp < min && below.is_none() {
-                below = Some(cp);
+        let below = spec.minimum.is_some_and(|m| cp < m);
+        let above = spec.maximum.is_some_and(|m| cp > m);
+        if below || above {
+            let v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::SPECIAL_CHARACTER,
+                format!(
+                    "code point U+{:04X} outside spec [{:?}, {:?}]",
+                    cp, spec.minimum, spec.maximum
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
             }
-        }
-        if let Some(max) = spec.maximum {
-            if cp > max && above.is_none() {
-                above = Some(cp);
-            }
-        }
-        if below.is_some() && above.is_some() {
-            break;
-        }
-    }
-    if let Some(cp) = below {
-        let v = violation_for(
-            ctx,
-            paragraph,
-            run,
-            jid::SPECIAL_CHAR_MINIMUM,
-            format!(
-                "code point U+{:04X} below minimum U+{:04X}",
-                cp,
-                spec.minimum.unwrap()
-            ),
-        );
-        if !ctx.push(v) {
-            return false;
-        }
-    }
-    if let Some(cp) = above {
-        let v = violation_for(
-            ctx,
-            paragraph,
-            run,
-            jid::SPECIAL_CHAR_MAXIMUM,
-            format!(
-                "code point U+{:04X} above maximum U+{:04X}",
-                cp,
-                spec.maximum.unwrap()
-            ),
-        );
-        if !ctx.push(v) {
-            return false;
         }
     }
     true
