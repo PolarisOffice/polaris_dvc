@@ -124,15 +124,17 @@ jobs:
           Write-Host "Using Windows SDK: $ver"
           "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build DVCModel + ExampleWindows (Win32 Release)
+      - name: Build DVCModel + ExampleWindows (x86 Release)
         shell: cmd
-        # Platform=Win32 (not x64) — upstream's x64 ItemDefinitionGroups
+        # Platform=x86 (not x64) — upstream's x64 ItemDefinitionGroups
         # in hwpx-owpml-model's vcxprojs are incomplete (missing
         # AdditionalIncludeDirectories), so x64 builds fail with
         # "Cannot open include file: 'OWPMLUtil/HncDefine.h'" even
-        # though the headers are on disk. The Win32 configurations
-        # carry `./;./../;./../Common/` correctly. Upstream apparently
-        # ships Win32 binaries in practice.
+        # though the headers are on disk. The Win32 (aka x86 at
+        # solution level) configurations carry `./;./../;./../Common/`
+        # correctly. Upstream apparently ships Win32 binaries in
+        # practice. DVCModel.sln surfaces x86/x64 (not Win32); MSBuild
+        # maps x86 → Win32 for the underlying vcxprojs.
         #
         # Other overrides:
         #   - PlatformToolset: upstream pins v141 (VS2017); retarget
@@ -142,7 +144,7 @@ jobs:
           cd dvc
           msbuild DVCModel.sln ^
             /p:Configuration=Release ^
-            /p:Platform=Win32 ^
+            /p:Platform=x86 ^
             /p:PlatformToolset=v143 ^
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
