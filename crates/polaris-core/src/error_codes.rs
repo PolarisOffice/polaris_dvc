@@ -70,6 +70,12 @@ pub mod jid {
     pub const STYLE_PERMISSION: ErrorCode = ErrorCode::new(3502);
     pub const HYPERLINK_PERMISSION: ErrorCode = ErrorCode::new(6901);
     pub const MACRO_PERMISSION: ErrorCode = ErrorCode::new(7001);
+    pub const TABLE_BORDER: ErrorCode = ErrorCode::new(3031);
+    pub const TABLE_BORDER_TYPE: ErrorCode = ErrorCode::new(3033);
+    pub const TABLE_BORDER_SIZE: ErrorCode = ErrorCode::new(3034);
+    pub const TABLE_BORDER_COLOR: ErrorCode = ErrorCode::new(3035);
+    pub const TABLE_TREAT_AS_CHAR: ErrorCode = ErrorCode::new(3004);
+    pub const TABLE_IN_TABLE: ErrorCode = ErrorCode::new(3056);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

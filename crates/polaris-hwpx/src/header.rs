@@ -6,7 +6,8 @@ use quick_xml::Reader;
 
 use crate::container::local_name;
 use crate::types::{
-    CharPr, FaceName, FontRef, Header, ParaPr, Shadow, Strikeout, Style, Underline,
+    Border, BorderFill, CharPr, FaceName, FontRef, Header, ParaPr, Shadow, Strikeout, Style,
+    Underline,
 };
 use crate::HwpxError;
 
@@ -21,6 +22,7 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
     let mut cur_face_lang: Option<String> = None;
     let mut cur_char: Option<CharPr> = None;
     let mut cur_para: Option<ParaPr> = None;
+    let mut cur_border_fill: Option<BorderFill> = None;
 
     loop {
         let event = reader.read_event_into(&mut buf);
@@ -162,11 +164,37 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                             char_pr_id_ref: attr_u32(&attrs, "charPrIDRef").unwrap_or(0),
                         });
                     }
+                    "borderFill" => {
+                        cur_border_fill = Some(BorderFill {
+                            id: attr_u32(&attrs, "id").unwrap_or(0),
+                            ..BorderFill::default()
+                        });
+                    }
+                    "leftBorder" | "rightBorder" | "topBorder" | "bottomBorder"
+                        if cur_border_fill.is_some() =>
+                    {
+                        let border = Border {
+                            kind: attr(&attrs, "type").unwrap_or_default(),
+                            width_mm: attr(&attrs, "width")
+                                .map(|s| parse_width_mm(&s))
+                                .unwrap_or(0.0),
+                            color: attr(&attrs, "color").unwrap_or_default(),
+                        };
+                        if let Some(bf) = cur_border_fill.as_mut() {
+                            match name.as_str() {
+                                "leftBorder" => bf.left = border,
+                                "rightBorder" => bf.right = border,
+                                "topBorder" => bf.top = border,
+                                "bottomBorder" => bf.bottom = border,
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
                     _ => {}
                 }
 
-                // Self-closing charPr/paraPr: commit immediately since no End
-                // event will be emitted for them.
+                // Self-closing charPr/paraPr/borderFill: commit immediately
+                // since no End event will be emitted for them.
                 if is_self_closing {
                     match name.as_str() {
                         "charPr" => {
@@ -177,6 +205,11 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                         "paraPr" => {
                             if let Some(p) = cur_para.take() {
                                 header.para_shapes.push(p);
+                            }
+                        }
+                        "borderFill" => {
+                            if let Some(bf) = cur_border_fill.take() {
+                                header.border_fills.push(bf);
                             }
                         }
                         _ => {}
@@ -195,6 +228,11 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                     "paraPr" => {
                         if let Some(p) = cur_para.take() {
                             header.para_shapes.push(p);
+                        }
+                    }
+                    "borderFill" => {
+                        if let Some(bf) = cur_border_fill.take() {
+                            header.border_fills.push(bf);
                         }
                     }
                     _ => {}
@@ -220,6 +258,13 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
 
 fn attr(attrs: &[(String, String)], key: &str) -> Option<String> {
     attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+}
+
+/// Parse HWPX width attributes like "0.12 mm" into a plain float in
+/// millimeters. Tolerates missing unit suffix and extra whitespace.
+fn parse_width_mm(s: &str) -> f64 {
+    let trimmed = s.trim().trim_end_matches("mm").trim();
+    trimmed.parse().unwrap_or(0.0)
 }
 fn attr_u32(attrs: &[(String, String)], key: &str) -> Option<u32> {
     attr(attrs, key).and_then(|s| s.trim().parse().ok())
@@ -309,5 +354,31 @@ mod tests {
         let h = parse_header(SAMPLE).unwrap();
         assert_eq!(h.styles.len(), 1);
         assert_eq!(h.styles[0].name, "바탕글");
+    }
+
+    #[test]
+    fn parses_border_fills() {
+        let xml = r##"<?xml version="1.0"?>
+<hh:head xmlns:hh="h">
+  <hh:refList>
+    <hh:borderFills itemCnt="1">
+      <hh:borderFill id="1">
+        <hh:leftBorder type="SOLID" width="0.12 mm" color="#000000"/>
+        <hh:rightBorder type="SOLID" width="0.12 mm" color="#000000"/>
+        <hh:topBorder type="DASH" width="0.40 mm" color="#FF0000"/>
+        <hh:bottomBorder type="SOLID" width="0.12 mm" color="#000000"/>
+      </hh:borderFill>
+    </hh:borderFills>
+  </hh:refList>
+</hh:head>"##;
+        let h = parse_header(xml).unwrap();
+        assert_eq!(h.border_fills.len(), 1);
+        let bf = &h.border_fills[0];
+        assert_eq!(bf.id, 1);
+        assert_eq!(bf.top.kind, "DASH");
+        assert_eq!(bf.top.width_mm, 0.40);
+        assert_eq!(bf.top.color, "#FF0000");
+        assert_eq!(bf.bottom.kind, "SOLID");
+        assert_eq!(bf.bottom.width_mm, 0.12);
     }
 }

@@ -24,7 +24,7 @@ use polaris_core::output::OutputOption;
 use polaris_core::rules::schema::RuleSpec;
 use serde_json::Value;
 
-use support::{FixCharPr, FixParaPr, FixParagraph, FixRun, Fixture};
+use support::{FixBorderFill, FixCharPr, FixParaPr, FixParagraph, FixRun, FixTable, Fixture};
 
 struct Case {
     name: &'static str,
@@ -128,6 +128,7 @@ fn cases() -> Vec<Case> {
                         align: "JUSTIFY".into(),
                         line_spacing_value: 160.0,
                     }],
+                    border_fills: vec![FixBorderFill::solid_default(1)],
                     paragraphs: vec![
                         FixParagraph {
                             para_pr_id_ref: 0,
@@ -137,6 +138,7 @@ fn cases() -> Vec<Case> {
                                 text: "ok".into(),
                                 hyperlink: false,
                             }],
+                            table: None,
                         },
                         FixParagraph {
                             para_pr_id_ref: 0,
@@ -146,6 +148,7 @@ fn cases() -> Vec<Case> {
                                 text: "bad".into(),
                                 hyperlink: false,
                             }],
+                            table: None,
                         },
                     ],
                     has_macro: false,
@@ -190,6 +193,52 @@ fn cases() -> Vec<Case> {
             },
             spec: r#"{
   "macro": { "permission": false }
+}
+"#,
+        },
+        Case {
+            name: "11_table_border_type_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                // borderFill id=2 has DASH top — spec requires SOLID (=1).
+                let mut bf = FixBorderFill::solid_default(2);
+                bf.top_kind = "DASH".into();
+                f.border_fills.push(bf);
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 100,
+                    border_fill_id_ref: 2,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": {
+    "border": [
+      { "position": 1, "bordertype": 1 }
+    ]
+  }
+}
+"#,
+        },
+        Case {
+            name: "12_lone_table_with_table_in_table_rule",
+            build: || {
+                // Regression anchor: a document with a single top-level
+                // table should NOT fire `table-in-table:false` since there
+                // is no nested table. Nested-table fixtures need richer
+                // XML escape support — tracked separately.
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 200,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "table-in-table": false }
 }
 "#,
         },

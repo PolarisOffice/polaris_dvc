@@ -16,11 +16,37 @@ pub struct Header {
     pub face_names: Vec<FaceName>,
     pub char_shapes: Vec<CharPr>,
     pub para_shapes: Vec<ParaPr>,
+    pub border_fills: Vec<BorderFill>,
     pub styles: Vec<Style>,
     /// True when the document contains any macro asset (populated from the
     /// OPF manifest during `open_bytes` — the header XML itself doesn't
     /// carry this signal). See `container::Manifest::has_macro`.
     pub has_macro: bool,
+}
+
+/// `<hh:borderFill>` entry. The `id` is referenced by tables (and by
+/// CharPr's `borderFillIDRef`); positional sub-borders drive DVC's
+/// `table.border` rule via the LinePosition mapping (1=Top, 2=Bottom,
+/// 3=Left, 4=Right) that upstream defines in `DVCInterface.h`.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BorderFill {
+    pub id: u32,
+    pub left: Border,
+    pub right: Border,
+    pub top: Border,
+    pub bottom: Border,
+}
+
+/// A single side of a `BorderFill`. `kind` is the upstream `LineShape`
+/// enum name as a string (e.g., "SOLID", "DASH_DOT"). `width_mm` carries
+/// the numeric part of HWPX's "0.12 mm"-style attribute. `color` is the
+/// HWPX `#RRGGBB` string left verbatim so the engine can decode either to
+/// a packed integer or to a CSS-style hex as needed.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Border {
+    pub kind: String,
+    pub width_mm: f64,
+    pub color: String,
 }
 
 /// Font face registration (`<hh:font>`).
@@ -103,6 +129,24 @@ pub struct Style {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Section {
     pub paragraphs: Vec<Paragraph>,
+    /// Tables encountered anywhere under this section, flattened. Order is
+    /// document order. Nested tables (table-in-table) expand inline.
+    pub tables: Vec<Table>,
+}
+
+/// A `<hp:tbl>` occurrence. We collect just enough for DVC's table rules
+/// today — the `border_fill_id_ref` drives border validation, and
+/// `row_cnt` / `col_cnt` are recorded for future size checks.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Table {
+    pub id: u32,
+    pub border_fill_id_ref: u32,
+    pub row_cnt: u32,
+    pub col_cnt: u32,
+    /// Nesting depth. 0 = top-level table, 1+ = table-in-table. Upstream
+    /// `isInTableInTable` fires on depth ≥ 1, which drives the
+    /// `table-in-table: false` spec rule.
+    pub nesting_depth: u32,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -150,5 +194,8 @@ impl Header {
         self.face_names
             .iter()
             .find(|f| f.id == id && f.lang == lang)
+    }
+    pub fn border_fill(&self, id: u32) -> Option<&BorderFill> {
+        self.border_fills.iter().find(|b| b.id == id)
     }
 }

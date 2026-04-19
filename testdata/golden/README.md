@@ -30,3 +30,5 @@ Current cases:
 | `08_style_forbidden` | paragraph has styleIDRef=7 vs spec `style.permission:false` → `ErrorCode: 3502` (`UseStyle: true`) |
 | `09_hyperlink_forbidden` | run wrapped in `<hp:fieldBegin type="HYPERLINK">` vs spec `hyperlink.permission:false` → `ErrorCode: 6901` (`UseHyperlink: true`) |
 | `10_macro_forbidden` | manifest has `Scripts/macros.js` vs spec `macro.permission:false` → `ErrorCode: 7001` (document-level, empty errorText) |
+| `11_table_border_type_mismatch` | table borderFill has DASH top vs spec `{position:1, bordertype:1}` (SOLID) → `ErrorCode: 3033` (`IsInTable: true`) |
+| `12_lone_table_with_table_in_table_rule` | single top-level table + spec `table-in-table:false` → empty array (regression anchor) |

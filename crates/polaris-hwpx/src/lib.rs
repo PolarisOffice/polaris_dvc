@@ -13,8 +13,8 @@ mod section;
 mod types;
 
 pub use types::{
-    CharPr, FaceName, FontRef, Header, HwpxDocument, LineSeg, ParaPr, Paragraph, Run, Section,
-    Shadow, Strikeout, Style, Underline,
+    Border, BorderFill, CharPr, FaceName, FontRef, Header, HwpxDocument, LineSeg, ParaPr,
+    Paragraph, Run, Section, Shadow, Strikeout, Style, Table, Underline,
 };
 
 #[derive(Debug, Error)]

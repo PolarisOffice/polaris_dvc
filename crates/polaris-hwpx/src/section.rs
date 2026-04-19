@@ -10,7 +10,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::container::local_name;
-use crate::types::{LineSeg, Paragraph, Run, Section};
+use crate::types::{LineSeg, Paragraph, Run, Section, Table};
 use crate::HwpxError;
 
 pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
@@ -29,6 +29,10 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
     let mut field_stack: Vec<String> = Vec::new();
     let is_in_hyperlink =
         |stack: &[String]| stack.iter().any(|t| t.eq_ignore_ascii_case("HYPERLINK"));
+    // Depth of open `<hp:tbl>` elements. Increments on Start/Empty, decrements
+    // on End. Used to assign `nesting_depth` so a table inside another table
+    // (upstream `isInTableInTable`) is flagged.
+    let mut table_depth: u32 = 0;
 
     loop {
         let event = reader.read_event_into(&mut buf);
@@ -94,6 +98,33 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     "fieldEnd" => {
                         field_stack.pop();
                     }
+                    "tbl" => {
+                        // `nesting_depth` mirrors upstream `isInTableInTable`:
+                        // a fresh `<hp:tbl>` sitting inside another active
+                        // `<hp:tbl>` gets depth ≥ 1.
+                        let mut t = Table {
+                            nesting_depth: table_depth,
+                            ..Table::default()
+                        };
+                        for attr in e.attributes().flatten() {
+                            let k = local_name(attr.key.as_ref());
+                            let v = attr
+                                .decode_and_unescape_value(&reader)
+                                .map(|c| c.into_owned())
+                                .unwrap_or_default();
+                            match k.as_str() {
+                                "id" => t.id = v.parse().unwrap_or(0),
+                                "borderFillIDRef" => t.border_fill_id_ref = v.parse().unwrap_or(0),
+                                "rowCnt" => t.row_cnt = v.parse().unwrap_or(0),
+                                "colCnt" => t.col_cnt = v.parse().unwrap_or(0),
+                                _ => {}
+                            }
+                        }
+                        section.tables.push(t);
+                        if !is_self_closing {
+                            table_depth = table_depth.saturating_add(1);
+                        }
+                    }
                     "t" => {
                         in_text = !is_self_closing;
                     }
@@ -143,6 +174,9 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     }
                     "t" => {
                         in_text = false;
+                    }
+                    "tbl" => {
+                        table_depth = table_depth.saturating_sub(1);
                     }
                     _ => {}
                 }
@@ -202,5 +236,52 @@ mod tests {
         let s = parse_section(SAMPLE).unwrap();
         assert_eq!(s.paragraphs[0].id, 0);
         assert_eq!(s.paragraphs[1].id, 1);
+    }
+
+    #[test]
+    fn extracts_table_with_border_fill_id_ref() {
+        let xml = r#"<?xml version="1.0"?>
+<hs:sec xmlns:hs="s" xmlns:hp="p">
+  <hp:p id="0" paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:tbl id="42" borderFillIDRef="3" rowCnt="2" colCnt="3">
+        <hp:tr><hp:tc></hp:tc></hp:tr>
+      </hp:tbl>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+        let s = parse_section(xml).unwrap();
+        assert_eq!(s.tables.len(), 1);
+        let t = &s.tables[0];
+        assert_eq!(t.id, 42);
+        assert_eq!(t.border_fill_id_ref, 3);
+        assert_eq!(t.row_cnt, 2);
+        assert_eq!(t.col_cnt, 3);
+        assert_eq!(t.nesting_depth, 0);
+    }
+
+    #[test]
+    fn flags_table_in_table_via_nesting_depth() {
+        let xml = r#"<?xml version="1.0"?>
+<hs:sec xmlns:hs="s" xmlns:hp="p">
+  <hp:p id="0" paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:tbl id="1" borderFillIDRef="1">
+        <hp:tr><hp:tc>
+          <hp:subList><hp:p id="1" paraPrIDRef="0" styleIDRef="0">
+            <hp:run charPrIDRef="0">
+              <hp:tbl id="2" borderFillIDRef="1"/>
+            </hp:run>
+          </hp:p></hp:subList>
+        </hp:tc></hp:tr>
+      </hp:tbl>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+        let s = parse_section(xml).unwrap();
+        assert_eq!(s.tables.len(), 2);
+        // Outer table at depth 0, inner at depth 1.
+        assert_eq!(s.tables[0].nesting_depth, 0);
+        assert_eq!(s.tables[1].nesting_depth, 1);
     }
 }

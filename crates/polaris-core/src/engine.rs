@@ -24,9 +24,9 @@
 use crate::error_codes::{jid, ErrorCode};
 use crate::output::ViolationRecord;
 use crate::report::Report;
-use crate::rules::schema::{CharShape, ParaShape, RuleSpec};
+use crate::rules::schema::{BorderRule, CharShape, ParaShape, RuleSpec, TableSpec};
 
-use polaris_hwpx::{CharPr, HwpxDocument, ParaPr, Paragraph, Run};
+use polaris_hwpx::{Border, BorderFill, CharPr, HwpxDocument, ParaPr, Paragraph, Run, Table};
 
 #[derive(Default)]
 pub struct EngineOptions {
@@ -85,6 +85,19 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
             };
             if !ctx.push(v) {
                 return ctx.report;
+            }
+        }
+    }
+
+    // Document-scope table checks (border / treat-as-char / table-in-table).
+    // Runs before the section walk so table violations report before any
+    // run-level violations downstream of the table.
+    if let Some(table_spec) = spec.table.as_ref() {
+        for section in &doc.sections {
+            for table in &section.tables {
+                if !check_table(&mut ctx, table, table_spec) {
+                    return ctx.report;
+                }
             }
         }
     }
@@ -378,6 +391,167 @@ fn check_para_shape(
     true
 }
 
+/// LinePosition mapping from upstream `DVCInterface.h`:
+/// `1 = Top, 2 = Bottom, 3 = Left, 4 = Right`.
+fn side_from_position(bf: &BorderFill, position: u32) -> Option<&Border> {
+    match position {
+        1 => Some(&bf.top),
+        2 => Some(&bf.bottom),
+        3 => Some(&bf.left),
+        4 => Some(&bf.right),
+        _ => None,
+    }
+}
+
+/// LineShape mapping from upstream `DVCInterface.h` — the integers used
+/// in rule specs line up 1:1 with the enum order. We decode to an integer
+/// so the spec's numeric `bordertype` can be compared directly.
+fn line_shape_ordinal(kind: &str) -> Option<u32> {
+    Some(match kind.to_ascii_uppercase().as_str() {
+        "NONE" | "" => 0,
+        "SOLID" => 1,
+        "DOT" => 2,
+        "DASH" => 3,
+        "DASH_DOT" => 4,
+        "DASH_DOT_DOT" => 5,
+        "LONGDASH" | "LONG_DASH" => 6,
+        "CIRCLE" => 7,
+        "DOUBLESLIM" => 8,
+        _ => return None,
+    })
+}
+
+/// HWPX stores color as `#RRGGBB`; DVC rule specs store it as an integer
+/// (0 for black, otherwise a packed RGB or palette index — the exact
+/// convention varies by org). We decode the hex to a `u32` so equality
+/// against numeric spec values works for the common "black = 0" case.
+fn decode_hex_color(s: &str) -> Option<u32> {
+    let t = s.trim_start_matches('#');
+    if t.len() == 6 {
+        u32::from_str_radix(t, 16).ok()
+    } else {
+        None
+    }
+}
+
+fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
+    if let Some(false) = spec.table_in_table {
+        if table.nesting_depth >= 1 {
+            let v = ViolationRecord {
+                table_id: table.id,
+                is_in_table: true,
+                is_in_table_in_table: true,
+                page_no: ctx.page_no.max(1),
+                line_no: ctx.line_no,
+                error_code: jid::TABLE_IN_TABLE,
+                error_string: "nested table disallowed by spec".to_string(),
+                ..ViolationRecord::new(jid::TABLE_IN_TABLE)
+            };
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    if let Some(borders) = spec.border.as_ref() {
+        let Some(bf) = ctx.doc.header.border_fill(table.border_fill_id_ref) else {
+            return true; // Missing borderFill — nothing to compare.
+        };
+        for rule in borders {
+            let Some(position) = rule.position else {
+                continue;
+            };
+            let Some(side) = side_from_position(bf, position) else {
+                continue;
+            };
+            if !check_border_side(ctx, table, position, side, rule) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn check_border_side(
+    ctx: &mut Ctx,
+    table: &Table,
+    position: u32,
+    side: &Border,
+    rule: &BorderRule,
+) -> bool {
+    if let Some(expected) = rule.bordertype {
+        if let Some(actual) = line_shape_ordinal(&side.kind) {
+            if actual != expected {
+                let v = table_violation(
+                    ctx,
+                    table,
+                    jid::TABLE_BORDER_TYPE,
+                    format!(
+                        "table {} position {} bordertype {} (\"{}\") != spec {}",
+                        table.id, position, actual, side.kind, expected
+                    ),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+    }
+    if let Some(expected) = rule.size {
+        if (side.width_mm - expected).abs() > 1e-6 {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_BORDER_SIZE,
+                format!(
+                    "table {} position {} border width {} mm != spec {}",
+                    table.id, position, side.width_mm, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+    if let Some(expected) = rule.color {
+        if let Some(actual) = decode_hex_color(&side.color) {
+            if actual != expected {
+                let v = table_violation(
+                    ctx,
+                    table,
+                    jid::TABLE_BORDER_COLOR,
+                    format!(
+                        "table {} position {} border color {:#x} != spec {:#x}",
+                        table.id, position, actual, expected
+                    ),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn table_violation(
+    ctx: &Ctx,
+    table: &Table,
+    code: ErrorCode,
+    diagnostic: String,
+) -> ViolationRecord {
+    ViolationRecord {
+        table_id: table.id,
+        is_in_table: true,
+        is_in_table_in_table: table.nesting_depth >= 1,
+        page_no: ctx.page_no.max(1),
+        line_no: ctx.line_no,
+        error_code: code,
+        error_string: diagnostic,
+        ..ViolationRecord::new(code)
+    }
+}
+
 fn violation_for(
     ctx: &Ctx,
     paragraph: &Paragraph,
@@ -425,6 +599,7 @@ mod tests {
         };
         let section = polaris_hwpx::Section {
             paragraphs: vec![paragraph],
+            tables: Vec::new(),
         };
         HwpxDocument {
             mimetype: "application/hwp+zip".into(),
@@ -566,6 +741,7 @@ mod tests {
                     make_para(1, "bad", 1600),
                     make_para(0, "clean2", 3200),
                 ],
+                tables: Vec::new(),
             }],
         };
 
@@ -624,6 +800,7 @@ mod tests {
                     // Third paragraph wraps back to vert_pos=0 → new page.
                     make_para("p3", 0),
                 ],
+                tables: Vec::new(),
             }],
         };
 
@@ -633,6 +810,92 @@ mod tests {
         assert_eq!((r.violations[0].page_no, r.violations[0].line_no), (1, 1));
         assert_eq!((r.violations[1].page_no, r.violations[1].line_no), (1, 2));
         assert_eq!((r.violations[2].page_no, r.violations[2].line_no), (2, 1));
+    }
+
+    #[test]
+    fn table_border_type_mismatch_emits_3033() {
+        use polaris_hwpx::{Border, BorderFill, Section, Table};
+
+        let mut header = Header::default();
+        header.border_fills.push(BorderFill {
+            id: 1,
+            top: Border {
+                kind: "DASH".into(),
+                width_mm: 0.12,
+                color: "#000000".into(),
+            },
+            bottom: Border {
+                kind: "SOLID".into(),
+                width_mm: 0.12,
+                color: "#000000".into(),
+            },
+            left: Border {
+                kind: "SOLID".into(),
+                width_mm: 0.12,
+                color: "#000000".into(),
+            },
+            right: Border {
+                kind: "SOLID".into(),
+                width_mm: 0.12,
+                color: "#000000".into(),
+            },
+        });
+
+        let doc = HwpxDocument {
+            mimetype: "application/hwp+zip".into(),
+            header,
+            sections: vec![Section {
+                paragraphs: Vec::new(),
+                tables: vec![Table {
+                    id: 5,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                    nesting_depth: 0,
+                }],
+            }],
+        };
+
+        // Spec: Top (position 1) must be SOLID (bordertype 1).
+        let spec: RuleSpec =
+            serde_json::from_str(r#"{"table":{"border":[{"position":1,"bordertype":1}]}}"#)
+                .unwrap();
+        let r = validate(&doc, &spec, &EngineOptions::default());
+        assert_eq!(r.violations.len(), 1);
+        assert_eq!(r.violations[0].error_code.value(), 3033);
+        assert_eq!(r.violations[0].table_id, 5);
+        assert!(r.violations[0].is_in_table);
+    }
+
+    #[test]
+    fn table_in_table_forbidden_emits_3056() {
+        use polaris_hwpx::{Section, Table};
+
+        let doc = HwpxDocument {
+            mimetype: "application/hwp+zip".into(),
+            header: Header::default(),
+            sections: vec![Section {
+                paragraphs: Vec::new(),
+                tables: vec![
+                    Table {
+                        id: 1,
+                        nesting_depth: 0,
+                        ..Table::default()
+                    },
+                    Table {
+                        id: 2,
+                        nesting_depth: 1,
+                        ..Table::default()
+                    },
+                ],
+            }],
+        };
+        let spec: RuleSpec = serde_json::from_str(r#"{"table":{"table-in-table":false}}"#).unwrap();
+        let r = validate(&doc, &spec, &EngineOptions::default());
+        assert_eq!(r.violations.len(), 1);
+        assert_eq!(r.violations[0].error_code.value(), 3056);
+        assert_eq!(r.violations[0].table_id, 2);
+        assert!(r.violations[0].is_in_table_in_table);
     }
 
     #[test]
