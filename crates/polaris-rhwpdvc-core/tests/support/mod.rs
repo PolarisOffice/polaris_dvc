@@ -245,6 +245,22 @@ pub struct FixRun {
     /// `<hp:fieldBegin type="HYPERLINK"> … <hp:fieldEnd/>` so the parser
     /// surfaces it as a hyperlinked run for the permission rule.
     pub hyperlink: bool,
+    /// When set, the emitted run is placed inside a nesting container.
+    /// This drives the shape / footnote / endnote scope tracking that
+    /// the parser uses to set `Run::is_in_shape` / `is_in_footnote` /
+    /// `is_in_endnote` — which in turn surface to the output's
+    /// `IsInShape` field (and Extended-mode scope flags).
+    pub scope: FixRunScope,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(dead_code)] // Some variants gain golden cases in follow-up commits.
+pub enum FixRunScope {
+    #[default]
+    None,
+    InShape,
+    InFootnote,
+    InEndnote,
 }
 
 impl Fixture {
@@ -264,6 +280,7 @@ impl Fixture {
                     char_pr_id_ref: 0,
                     text: "안녕".into(),
                     hyperlink: false,
+                    scope: FixRunScope::None,
                 }],
                 table: None,
             }],
@@ -617,6 +634,20 @@ impl Fixture {
                          </hp:fieldBegin>",
                     );
                 }
+                // Scope wrapper: shapeObject / footnote / endnote parents
+                // that the parser's scope-stack recognizes. The emitted
+                // element carries a minimal attribute set; only the
+                // wrapping matters for our test goldens.
+                let (scope_open, scope_close) = match r.scope {
+                    FixRunScope::None => ("", ""),
+                    FixRunScope::InShape => (
+                        "<hp:shapeObject id=\"99\" zOrder=\"0\" numberingType=\"NONE\">",
+                        "</hp:shapeObject>",
+                    ),
+                    FixRunScope::InFootnote => ("<hp:footnote id=\"98\">", "</hp:footnote>"),
+                    FixRunScope::InEndnote => ("<hp:endnote id=\"97\">", "</hp:endnote>"),
+                };
+                s.push_str(scope_open);
                 s.push_str(&format!("<hp:run charPrIDRef=\"{}\">", r.char_pr_id_ref));
                 // <hp:secPr> belongs in the very first run of the first paragraph.
                 if pi == 0 && ri == 0 {
@@ -624,6 +655,7 @@ impl Fixture {
                 }
                 s.push_str(&format!("<hp:t>{}</hp:t>", xml_escape(&r.text)));
                 s.push_str("</hp:run>");
+                s.push_str(scope_close);
                 if r.hyperlink {
                     s.push_str("<hp:fieldEnd fieldType=\"HYPERLINK\" fieldName=\"hyp\"/>");
                 }

@@ -372,6 +372,15 @@ pub struct Run {
     /// and the matching `<hp:fieldEnd>`. Mirrors upstream `RunTypeInfo::
     /// isHyperlink` which drives the hyperlink-permission rule.
     pub is_hyperlink: bool,
+    /// True when this run is nested inside a `<hp:shapeObject>` / `<hp:pic>`
+    /// / `<hp:drawing>` or any container that upstream classifies as a
+    /// "shape" scope. Surfaces to the output as the `IsInShape` field on
+    /// each violation.
+    pub is_in_shape: bool,
+    /// True when the run is inside a `<hp:footnote>` sub-list.
+    pub is_in_footnote: bool,
+    /// True when the run is inside a `<hp:endnote>` sub-list.
+    pub is_in_endnote: bool,
 }
 
 impl Header {

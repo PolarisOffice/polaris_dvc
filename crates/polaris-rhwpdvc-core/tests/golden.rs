@@ -26,7 +26,7 @@ use serde_json::Value;
 
 use support::{
     FixBorderFill, FixBullet, FixCharPr, FixFillBrush, FixNumbering, FixParaHead, FixParaPr,
-    FixParagraph, FixRun, FixTable, Fixture,
+    FixParagraph, FixRun, FixRunScope, FixTable, Fixture,
 };
 
 struct Case {
@@ -155,6 +155,7 @@ fn cases() -> Vec<Case> {
                                 char_pr_id_ref: 0,
                                 text: "ok".into(),
                                 hyperlink: false,
+                                scope: support::FixRunScope::None,
                             }],
                             table: None,
                         },
@@ -165,6 +166,7 @@ fn cases() -> Vec<Case> {
                                 char_pr_id_ref: 1,
                                 text: "bad".into(),
                                 hyperlink: false,
+                                scope: support::FixRunScope::None,
                             }],
                             table: None,
                         },
@@ -674,6 +676,26 @@ fn cases() -> Vec<Case> {
             },
             spec: r#"{
   "table": { "fixed": true }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Shape scope tracking. Run is wrapped in <hp:shapeObject>
+            // so the parser sets `Run.is_in_shape=true`, which the
+            // engine propagates to `ViolationRecord.is_in_shape`.
+            // The run also triggers a bold mismatch (fixture bold=true
+            // vs spec bold=false) so we have a non-empty violation to
+            // inspect. Expected.json should carry `IsInShape: true`.
+            name: "38_shape_scope_bold_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].bold = true;
+                f.paragraphs[0].runs[0].scope = FixRunScope::InShape;
+                f
+            },
+            spec: r#"{
+  "charshape": { "bold": false }
 }
 "#,
             profile: CheckProfile::Extended,

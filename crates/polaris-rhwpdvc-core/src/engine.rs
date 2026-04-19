@@ -1393,6 +1393,13 @@ fn violation_for(
         page_no: ctx.page_no,
         line_no: ctx.line_no,
         error_code: code,
+        // Propagate scope flags from the run so output's
+        // `IsInShape` / `UseHyperlink` reflect what upstream would
+        // have recorded. Footnote/endnote scopes are tracked on the
+        // run but have no corresponding DVC output field; they're
+        // available to internal consumers via the `Run` struct.
+        is_in_shape: run.is_in_shape,
+        use_hyperlink: run.is_hyperlink,
         error_string: diagnostic,
         ..ViolationRecord::new(code)
     }
@@ -1416,6 +1423,7 @@ mod tests {
             char_pr_id_ref: 0,
             text: text.into(),
             is_hyperlink: false,
+            ..polaris_rhwpdvc_hwpx::Run::default()
         };
         let paragraph = polaris_rhwpdvc_hwpx::Paragraph {
             id: 0,
@@ -1551,6 +1559,7 @@ mod tests {
                 char_pr_id_ref: char_ref,
                 text: text.into(),
                 is_hyperlink: false,
+                ..Run::default()
             }],
             line_segs: vec![LineSeg {
                 vert_pos: vp,
@@ -1609,6 +1618,7 @@ mod tests {
                 char_pr_id_ref: 0,
                 text: text.into(),
                 is_hyperlink: false,
+                ..Run::default()
             }],
             line_segs: vec![LineSeg {
                 vert_pos: vp,

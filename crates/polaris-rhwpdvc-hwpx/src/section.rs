@@ -37,6 +37,13 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
     // `<hp:tbl>` so we can fill its <hp:sz>/<hp:pos>/<hp:outside>/<hp:inMargin>
     // attributes onto the right entry.
     let mut table_stack: Vec<usize> = Vec::new();
+    // Scope depths for "is inside X" flags on a Run. Any non-zero depth
+    // means the currently-parsed run sits within that container. Using
+    // depths (not bool) keeps nested scopes — e.g. a shape inside a
+    // footnote — correctly stacked.
+    let mut shape_depth: u32 = 0;
+    let mut footnote_depth: u32 = 0;
+    let mut endnote_depth: u32 = 0;
 
     loop {
         let event = reader.read_event_into(&mut buf);
@@ -70,6 +77,9 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     "run" => {
                         let mut r = Run {
                             is_hyperlink: is_in_hyperlink(&field_stack),
+                            is_in_shape: shape_depth > 0,
+                            is_in_footnote: footnote_depth > 0,
+                            is_in_endnote: endnote_depth > 0,
                             ..Run::default()
                         };
                         for attr in e.attributes().flatten() {
@@ -218,6 +228,21 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     "t" => {
                         in_text = !is_self_closing;
                     }
+                    // Shape-scope openers. OWPML nests text content under
+                    // one of several container elements that are logically
+                    // "inside a shape" — shapeObject is the generic form,
+                    // pic is pictures, drawing is freehand/autoshape.
+                    // Self-closing variants carry no inner runs, so skip
+                    // them to avoid a no-op push/pop.
+                    "shapeObject" | "pic" | "drawing" if !is_self_closing => {
+                        shape_depth = shape_depth.saturating_add(1);
+                    }
+                    "footnote" if !is_self_closing => {
+                        footnote_depth = footnote_depth.saturating_add(1);
+                    }
+                    "endnote" if !is_self_closing => {
+                        endnote_depth = endnote_depth.saturating_add(1);
+                    }
                     "lineseg" => {
                         if let Some(p) = cur_para.as_mut() {
                             let mut seg = LineSeg::default();
@@ -266,6 +291,15 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     "tbl" => {
                         table_depth = table_depth.saturating_sub(1);
                         table_stack.pop();
+                    }
+                    "shapeObject" | "pic" | "drawing" => {
+                        shape_depth = shape_depth.saturating_sub(1);
+                    }
+                    "footnote" => {
+                        footnote_depth = footnote_depth.saturating_sub(1);
+                    }
+                    "endnote" => {
+                        endnote_depth = endnote_depth.saturating_sub(1);
                     }
                     _ => {}
                 }
