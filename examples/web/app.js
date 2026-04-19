@@ -171,12 +171,14 @@ function runValidation() {
     setStatus(`Spec JSON parse error: ${e.message}`, "err");
     return;
   }
+  const dvcStrict = $("#dvc-strict")?.checked ?? false;
   setStatus("Validating…");
   try {
     const t0 = performance.now();
-    const result = validate(hwpxBytes, spec);
+    const result = validate(hwpxBytes, spec, { dvcStrict });
     const dt = performance.now() - t0;
-    setStatus(`Done in ${dt.toFixed(1)} ms.`, "ok");
+    const mode = dvcStrict ? "dvc-strict" : "extended";
+    setStatus(`Done in ${dt.toFixed(1)} ms (${mode}).`, "ok");
     renderResults(result);
   } catch (e) {
     setStatus(`Validation failed: ${e.message || e}`, "err");

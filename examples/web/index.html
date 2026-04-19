@@ -261,6 +261,13 @@
         <textarea id="spec" spellcheck="false"></textarea>
         <div class="actions">
           <button id="run" class="primary" disabled>Validate</button>
+          <label
+            style="font-size: 13px; color: var(--muted); cursor: pointer"
+            title="Only emit JIDs that upstream DVC.exe actually checks. Drops our extended rules (margin-*, bgfill-*, bggradation-*, caption-*, horizontal)."
+          >
+            <input id="dvc-strict" type="checkbox" />
+            DVC strict
+          </label>
           <span id="status">Loading WASM…</span>
         </div>
       </section>

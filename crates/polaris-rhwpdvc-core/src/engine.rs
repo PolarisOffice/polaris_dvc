@@ -32,9 +32,49 @@ use polaris_rhwpdvc_hwpx::{
     Border, BorderFill, CharPr, HwpxDocument, ParaPr, Paragraph, Run, Table,
 };
 
+/// Which ruleset to apply.
+///
+/// - `Extended` (default): everything our engine can check. Superset of
+///   DVC. Rules upstream leaves as no-op (e.g. table `margin-*`,
+///   `bgfill-*`, `bggradation-*`, paragraph `horizontal`) still fire
+///   here. Useful as a stricter OWPML-spec validator.
+/// - `DvcStrict`: only JIDs upstream `Checker.cpp` actually validates.
+///   Violations whose JID is a known upstream no-op are silently dropped.
+///   This is the profile to use when your goal is byte-compatible output
+///   with the upstream `DVC.exe`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum CheckProfile {
+    #[default]
+    Extended,
+    DvcStrict,
+}
+
 #[derive(Default)]
 pub struct EngineOptions {
     pub stop_on_first: bool,
+    pub profile: CheckProfile,
+}
+
+/// JIDs that upstream `Checker.cpp` lists only as `break;` with no real
+/// comparison. In `DvcStrict` mode we drop violations carrying these
+/// codes so our output stays byte-compatible with DVC.exe. The list is
+/// derived from an audit of upstream `Checker.cpp` (search for
+/// `case JID_X:\n    break;` patterns) cross-referenced with the JIDs
+/// our own engine actually emits.
+fn dvc_strict_allows(code: ErrorCode) -> bool {
+    !matches!(
+        code.value(),
+        // JID_PARA_SHAPE_HORIZONTAL (aliased as PARA_SHAPE_ALIGN) — noop.
+        2001
+        // JID_TABLE_MARGIN_{LEFT,RIGHT,TOP,BOTTOM} — noop.
+        | 3022..=3025
+        // JID_TABLE_BGFILL_{TYPE,FACECOLOR,PATTONCOLOR,PATTONTYPE} — noop.
+        | 3037..=3040
+        // JID_TABLE_BGGRADATION_* — noop (also not yet emitted by us).
+        | 3041..=3048
+        // JID_TABLE_CAPTION_* — noop (also not yet emitted by us).
+        | 3026..=3030
+    )
 }
 
 struct Ctx<'a> {
@@ -53,6 +93,13 @@ struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
     fn push(&mut self, v: ViolationRecord) -> bool {
+        // Strict-mode gate: drop violations whose JID upstream leaves as
+        // a no-op. This keeps our output byte-compatible with DVC.exe
+        // while leaving the engine's over-implementations intact for the
+        // default `Extended` profile.
+        if self.opts.profile == CheckProfile::DvcStrict && !dvc_strict_allows(v.error_code) {
+            return true;
+        }
         self.report.push(v);
         if self.opts.stop_on_first {
             self.report.stopped_early = true;
@@ -1446,6 +1493,7 @@ mod tests {
             &spec,
             &EngineOptions {
                 stop_on_first: true,
+                ..EngineOptions::default()
             },
         );
         assert_eq!(r.violations.len(), 1);

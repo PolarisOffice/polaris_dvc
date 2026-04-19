@@ -19,7 +19,7 @@ mod support;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use polaris_rhwpdvc_core::engine::{validate, EngineOptions};
+use polaris_rhwpdvc_core::engine::{validate, CheckProfile, EngineOptions};
 use polaris_rhwpdvc_core::output::OutputOption;
 use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 use serde_json::Value;
@@ -33,6 +33,10 @@ struct Case {
     name: &'static str,
     build: fn() -> Fixture,
     spec: &'static str,
+    /// Defaults to `CheckProfile::Extended`. Set to `DvcStrict` on cases
+    /// that specifically verify the strict filter drops over-implemented
+    /// JIDs (margin-*, bgfill-*, etc.).
+    profile: CheckProfile,
 }
 
 fn cases() -> Vec<Case> {
@@ -45,6 +49,7 @@ fn cases() -> Vec<Case> {
   "parashape": { "linespacingvalue": 160 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "02_fontsize_mismatch",
@@ -57,6 +62,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "fontsize": 10 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "03_bold_mismatch",
@@ -69,6 +75,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "bold": false }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "04_font_allowlist_miss",
@@ -81,6 +88,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "font": ["바탕", "돋움", "굴림"] }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "05_font_allowlist_hit",
@@ -93,6 +101,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "font": ["바탕", "돋움", "굴림"] }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "06_linespacing_mismatch",
@@ -105,6 +114,7 @@ fn cases() -> Vec<Case> {
   "parashape": { "linespacingvalue": 160 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "07_mixed_paragraphs",
@@ -166,6 +176,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "fontsize": 10, "bold": false }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "08_style_forbidden",
@@ -179,6 +190,7 @@ fn cases() -> Vec<Case> {
   "style": { "permission": false }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "09_hyperlink_forbidden",
@@ -191,6 +203,7 @@ fn cases() -> Vec<Case> {
   "hyperlink": { "permission": false }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "10_macro_forbidden",
@@ -203,6 +216,7 @@ fn cases() -> Vec<Case> {
   "macro": { "permission": false }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "11_table_border_type_mismatch",
@@ -228,6 +242,7 @@ fn cases() -> Vec<Case> {
   }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "16_bullet_char_not_allowed",
@@ -244,6 +259,7 @@ fn cases() -> Vec<Case> {
   "bullet": { "bulletshapes": "□○-•*" }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "17_outlineshape_numtype_mismatch",
@@ -269,6 +285,7 @@ fn cases() -> Vec<Case> {
   }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "18_paranumbullet_numshape_mismatch",
@@ -294,6 +311,7 @@ fn cases() -> Vec<Case> {
   }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "21_table_size_width_mismatch",
@@ -312,6 +330,7 @@ fn cases() -> Vec<Case> {
   "table": { "size-width": 30000 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "22_table_margin_range_ok",
@@ -335,6 +354,7 @@ fn cases() -> Vec<Case> {
   }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "23_table_treat_as_char_mismatch",
@@ -353,6 +373,7 @@ fn cases() -> Vec<Case> {
   "table": { "treatAsChar": true }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "24_table_bgfill_type_mismatch",
@@ -372,6 +393,7 @@ fn cases() -> Vec<Case> {
   "table": { "bgfill-type": 1 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "25_table_bgfill_facecolor_mismatch",
@@ -399,6 +421,7 @@ fn cases() -> Vec<Case> {
   "table": { "bgfill-facecolor": "#FFFFFF" }
 }
 "##,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "19_fontsize_range_ok",
@@ -411,6 +434,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "fontsize": { "min": 10, "max": 12 } }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "20_fontsize_range_above_max",
@@ -423,6 +447,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "fontsize": { "min": 10, "max": 12 } }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "15_specialcharacter_below_minimum",
@@ -437,6 +462,7 @@ fn cases() -> Vec<Case> {
   "specialcharacter": { "minimum": 32, "maximum": 1048575 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "13_charshape_ratio_mismatch",
@@ -449,6 +475,7 @@ fn cases() -> Vec<Case> {
   "charshape": { "ratio": 100 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "14_parashape_indent_mismatch",
@@ -461,6 +488,7 @@ fn cases() -> Vec<Case> {
   "parashape": { "indent": 0 }
 }
 "#,
+            profile: CheckProfile::Extended,
         },
         Case {
             name: "12_lone_table_with_table_in_table_rule",
@@ -482,6 +510,29 @@ fn cases() -> Vec<Case> {
   "table": { "table-in-table": false }
 }
 "#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Same fixture + spec as 24_table_bgfill_type_mismatch, but
+            // the DvcStrict profile filters out JIDs upstream leaves as
+            // no-op. bgfill-type is one of those, so expected.json is [].
+            // This case pins the strict gate's behavior.
+            name: "26_table_bgfill_type_strict_filters_out",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 600,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "bgfill-type": 1 }
+}
+"#,
+            profile: CheckProfile::DvcStrict,
         },
     ]
 }
@@ -515,7 +566,11 @@ fn golden_cases() {
         let spec: RuleSpec = serde_json::from_str(case.spec).expect("case spec parses");
 
         let doc = polaris_rhwpdvc_hwpx::open_bytes(&hwpx_bytes).expect("fixture parses");
-        let report = validate(&doc, &spec, &EngineOptions::default());
+        let opts = EngineOptions {
+            profile: case.profile,
+            ..EngineOptions::default()
+        };
+        let report = validate(&doc, &spec, &opts);
         let actual = report.to_json_value(OutputOption::AllOption);
 
         if regenerate() {

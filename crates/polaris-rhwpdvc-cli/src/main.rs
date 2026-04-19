@@ -50,6 +50,14 @@ struct Cli {
     #[arg(short = 't', value_name = "SPEC")]
     spec: Option<PathBuf>,
 
+    /// DVC strict mode — only emit violations for JIDs upstream
+    /// `DVC.exe` actually validates. Default (off) is the "Extended"
+    /// profile which also fires on JIDs upstream leaves as no-op
+    /// (margin-*, bgfill-*, bggradation-*, caption-*, etc.). Use this
+    /// flag when byte-compat with DVC.exe matters.
+    #[arg(long = "dvc-strict")]
+    dvc_strict: bool,
+
     /// HWPX document path, or `-` for stdin.
     #[arg(value_name = "INPUT")]
     input: Option<String>,
@@ -102,6 +110,11 @@ fn main() -> ExitCode {
 
     let opts = polaris_rhwpdvc_core::engine::EngineOptions {
         stop_on_first: cli.simple,
+        profile: if cli.dvc_strict {
+            polaris_rhwpdvc_core::engine::CheckProfile::DvcStrict
+        } else {
+            polaris_rhwpdvc_core::engine::CheckProfile::Extended
+        },
     };
     let report = polaris_rhwpdvc_core::engine::validate(&doc, &spec, &opts);
 

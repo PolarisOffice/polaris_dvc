@@ -256,6 +256,29 @@ happens via regular rebase-on-merge on GitHub.
 | Golden case list | `crates/polaris-rhwpdvc-core/tests/golden.rs` |
 | Upstream references | `third_party/dvc-upstream/Source/{Checker,CheckList,DVCOutputJson,OWPMLReader,JsonModel}.*` |
 
+## Extended vs DvcStrict profiles
+
+The engine has two check profiles (`EngineOptions::profile`):
+
+- **Extended** (default) — everything our engine can check. Includes
+  rules that upstream `Checker.cpp` leaves as `break;` no-ops (e.g.
+  `table.margin-*`, `table.bgfill-*`, `caption-*`, `parashape.horizontal`).
+  Think of this as "stricter OWPML validator".
+- **DvcStrict** — only emit JIDs upstream DVC.exe also validates. A
+  single gate in `Ctx::push` drops violations whose `ErrorCode` is on
+  the `dvc_strict_allows` block-list (engine.rs).
+
+User-facing:
+- CLI: `--dvc-strict`
+- WASM: `validate(hwpx, spec, { dvcStrict: true })`
+- Web demo: checkbox next to the Validate button
+
+When adding a new checker:
+- If upstream also implements it → no strict-mode action needed.
+- If upstream has it as `break;` → add the JID to the `dvc_strict_allows`
+  block-list so strict output stays clean. Verify by running a fresh
+  golden case with `profile: CheckProfile::DvcStrict` and expected `[]`.
+
 ## Roadmap snapshot
 
 Current prioritized status lives in `docs/parity-roadmap.md`. As of this

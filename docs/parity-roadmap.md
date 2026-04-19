@@ -4,6 +4,31 @@
 커버하고 있고, `JsonModel.h`의 217개 JID 전부를 `jid_registry.rs`에
 상수로 매핑해 두었다. 진짜 "DVC parity"라고 부르려면 남은 것들이 있다.
 
+## Parity 전략: Dual-mode (`CheckProfile`)
+
+업스트림 `Checker.cpp`를 정밀 스캔한 결과, **많은 JID가 dispatch switch
+에서 `break;`만 있는 no-op**였다 — DVC.exe는 spec에 `margin-*`,
+`bgfill-*`, `bggradation-*`, `caption-*`, `horizontal` 등을 받더라도
+아무 위반도 뱉지 않는다. polaris는 이 중 `margin-*`, `bgfill-*`를
+이미 구현한 상태였다. 따라서 그대로 두면 같은 spec·doc을 돌려도 우리가
+DVC보다 **더 많은** 위반을 뱉고, "parity" 주장이 깨진다.
+
+해결: `EngineOptions::profile`에 두 모드를 뒀다.
+
+- **`Extended` (기본)** — polaris가 알고 있는 모든 룰. OWPML 명세를
+  더 엄격하게 보는 "Spec 모드"에 해당.
+- **`DvcStrict`** — upstream `Checker.cpp`가 실제로 체크하는 JID만
+  통과시킴. no-op JID 위반은 `Ctx::push` 게이트에서 조용히 drop.
+  DVC.exe와 바이트 동일 출력을 노릴 때 사용.
+
+CLI: `--dvc-strict`. WASM: `validate(hwpx, spec, { dvcStrict: true })`.
+현재 strict에서 드롭되는 JID 블록: `2001` (PARA_SHAPE_HORIZONTAL),
+`3022-3025` (TABLE_MARGIN_*), `3026-3030` (TABLE_CAPTION_*),
+`3037-3040` (TABLE_BGFILL_*), `3041-3048` (TABLE_BGGRADATION_*).
+구현: `crates/polaris-rhwpdvc-core/src/engine.rs::dvc_strict_allows`.
+
+---
+
 아래 순위는 **실무 영향도 × 구현 난이도** 기준이다. 각 항목은 현재
 상태·예상 작업량·관련 파일까지 명시했다.
 
