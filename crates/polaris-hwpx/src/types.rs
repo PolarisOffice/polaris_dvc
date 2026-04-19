@@ -108,6 +108,19 @@ pub struct Paragraph {
     pub para_pr_id_ref: u32,
     pub style_id_ref: u32,
     pub runs: Vec<Run>,
+    /// `<hp:lineseg>` entries for this paragraph, in document order. The
+    /// engine's page/line tracker (port of upstream `FindPageInfo`) reads
+    /// `vert_pos`/`vert_size` to detect page breaks.
+    pub line_segs: Vec<LineSeg>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct LineSeg {
+    pub text_pos: u32,
+    pub vert_pos: i64,
+    pub vert_size: i64,
+    pub horz_pos: i64,
+    pub horz_size: i64,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

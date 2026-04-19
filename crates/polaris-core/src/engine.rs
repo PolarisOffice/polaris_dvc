@@ -3,12 +3,17 @@
 //!
 //! Scope for the initial engine:
 //! - CharShape checks: font (Hangul face), fontsize (height, 1/100 pt),
-//!   bold, italic.
-//! - ParaShape checks: line spacing value.
+//!   bold, italic, underline, strikeout.
+//! - ParaShape checks: align, line spacing value.
 //!
-//! Further JID categories land in follow-up commits, each with its own
-//! checker module. Page/line tracking is stubbed to 1/1 until the HWPX
-//! parser exposes `<hp:linesegarray>` data.
+//! Page/line tracking is a port of upstream `OWPMLReader::FindPageInfo`:
+//! page breaks open when a section-level paragraph's first lineseg has
+//! `vert_pos == 0` or wraps back above the previous paragraph's tail.
+//! `line_no` accumulates by the paragraph's lineseg count after each
+//! paragraph.
+//!
+//! Further JID categories (table borders, permissions, shapes, hyperlinks,
+//! macros) land in follow-up commits, each with its own checker module.
 
 // Each check is written as `if mismatched { if !ctx.push(...) { return false; } }`
 // because the inner `push` can also tell us to stop early. Collapsing these
@@ -32,6 +37,14 @@ struct Ctx<'a> {
     doc: &'a HwpxDocument,
     opts: &'a EngineOptions,
     report: Report,
+    /// Current page number (0 before the first paragraph; increments to 1
+    /// when the first paragraph's first lineseg fires the opening page
+    /// break, matching upstream `FindPageInfo`).
+    page_no: u32,
+    /// Current line number within the current page (1-based).
+    line_no: u32,
+    before_vert_pos: i64,
+    before_vert_size: i64,
 }
 
 impl<'a> Ctx<'a> {
@@ -50,12 +63,56 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
         doc,
         opts,
         report: Report::empty(),
+        page_no: 0,
+        line_no: 1,
+        before_vert_pos: 0,
+        before_vert_size: 0,
     };
 
     'sections: for section in &doc.sections {
+        // Per upstream `GetPageInfo`, vertical-position trackers reset per
+        // section. Page counter is cumulative across sections.
+        ctx.before_vert_pos = 0;
+        ctx.before_vert_size = 0;
         for paragraph in &section.paragraphs {
+            // Opening page break for a paragraph that sits directly under the
+            // section: either the first lineseg has vert_pos == 0, or its
+            // vert_pos wrapped back above the previous paragraph's tail
+            // (a new column/page flow). Tables / shapes are out of scope
+            // today, so every paragraph we see is section-level.
+            let first_vp = paragraph.line_segs.first().map(|s| s.vert_pos).unwrap_or(0);
+            let page_break_open =
+                first_vp == 0 || first_vp < ctx.before_vert_pos + ctx.before_vert_size;
+            if page_break_open {
+                ctx.page_no = ctx.page_no.saturating_add(1);
+                ctx.line_no = 1;
+            }
+
             if !check_paragraph(&mut ctx, paragraph, spec) {
                 break 'sections;
+            }
+
+            let n_seg = paragraph.line_segs.len() as u32;
+            // Advance line counter by this paragraph's line count. Upstream
+            // gates this on "not in table and not in object"; once we model
+            // those categories we'll guard it similarly.
+            if n_seg > 0 {
+                ctx.line_no = ctx.line_no.saturating_add(n_seg);
+                let last = paragraph.line_segs.last().unwrap();
+                ctx.before_vert_pos = last.vert_pos;
+                ctx.before_vert_size = last.vert_size;
+            }
+
+            // Intra-paragraph page break: if any non-first lineseg sits at
+            // vert_pos == 0, the paragraph itself crossed a page boundary.
+            if paragraph.line_segs.len() > 1 {
+                for (idx, seg) in paragraph.line_segs.iter().enumerate().skip(1).rev() {
+                    if seg.vert_pos == 0 {
+                        ctx.page_no = ctx.page_no.saturating_add(1);
+                        ctx.line_no = (paragraph.line_segs.len() - idx + 1) as u32;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -103,7 +160,8 @@ fn check_char_shape(
                 .map(|f| f.face.as_str());
             let ok = actual.map(|a| allow.contains(a)).unwrap_or(false);
             if !ok {
-                if !ctx.push(violation_for(
+                let v = violation_for(
+                    ctx,
                     paragraph,
                     run,
                     jid::CHAR_SHAPE_FONT,
@@ -112,7 +170,8 @@ fn check_char_shape(
                         actual.unwrap_or("<unknown>"),
                         allow.0
                     ),
-                )) {
+                );
+                if !ctx.push(v) {
                     return false;
                 }
             }
@@ -123,7 +182,8 @@ fn check_char_shape(
     if let Some(expected_pt) = spec.fontsize {
         let expected_height = (expected_pt * 100.0).round() as u32;
         if char_pr.height != expected_height {
-            if !ctx.push(violation_for(
+            let v = violation_for(
+                ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_FONTSIZE,
@@ -131,7 +191,8 @@ fn check_char_shape(
                     "expected {} pt ({}), got {}",
                     expected_pt, expected_height, char_pr.height
                 ),
-            )) {
+            );
+            if !ctx.push(v) {
                 return false;
             }
         }
@@ -139,12 +200,14 @@ fn check_char_shape(
 
     if let Some(expected) = spec.bold {
         if char_pr.bold != expected {
-            if !ctx.push(violation_for(
+            let v = violation_for(
+                ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_BOLD,
                 format!("expected bold={}, got {}", expected, char_pr.bold),
-            )) {
+            );
+            if !ctx.push(v) {
                 return false;
             }
         }
@@ -152,12 +215,14 @@ fn check_char_shape(
 
     if let Some(expected) = spec.italic {
         if char_pr.italic != expected {
-            if !ctx.push(violation_for(
+            let v = violation_for(
+                ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_ITALIC,
                 format!("expected italic={}, got {}", expected, char_pr.italic),
-            )) {
+            );
+            if !ctx.push(v) {
                 return false;
             }
         }
@@ -166,12 +231,14 @@ fn check_char_shape(
     if let Some(expected) = spec.underline {
         let actual = char_pr.underline.is_some();
         if actual != expected {
-            if !ctx.push(violation_for(
+            let v = violation_for(
+                ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_UNDERLINE,
                 format!("expected underline={}, got {}", expected, actual),
-            )) {
+            );
+            if !ctx.push(v) {
                 return false;
             }
         }
@@ -180,12 +247,14 @@ fn check_char_shape(
     if let Some(expected) = spec.strikeout {
         let actual = char_pr.strikeout.is_some();
         if actual != expected {
-            if !ctx.push(violation_for(
+            let v = violation_for(
+                ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_STRIKEOUT,
                 format!("expected strikeout={}, got {}", expected, actual),
-            )) {
+            );
+            if !ctx.push(v) {
                 return false;
             }
         }
@@ -202,10 +271,12 @@ fn check_para_shape(
 ) -> bool {
     if let Some(expected) = spec.linespacingvalue {
         if (para_pr.line_spacing_value - expected).abs() > f64::EPSILON {
+            let page_no = ctx.page_no;
+            let line_no = ctx.line_no;
             let v = ViolationRecord {
                 para_pr_id_ref: paragraph.para_pr_id_ref,
-                page_no: 1,
-                line_no: 1,
+                page_no,
+                line_no,
                 error_code: jid::PARA_SHAPE_LINESPACING,
                 error_string: format!(
                     "expected line spacing {}, got {}",
@@ -221,10 +292,12 @@ fn check_para_shape(
 
     if let Some(expected) = spec.align.as_deref() {
         if !para_pr.align_horizontal.eq_ignore_ascii_case(expected) {
+            let page_no = ctx.page_no;
+            let line_no = ctx.line_no;
             let v = ViolationRecord {
                 para_pr_id_ref: paragraph.para_pr_id_ref,
-                page_no: 1,
-                line_no: 1,
+                page_no,
+                line_no,
                 error_code: jid::PARA_SHAPE_ALIGN,
                 error_string: format!(
                     "expected align {}, got {}",
@@ -242,6 +315,7 @@ fn check_para_shape(
 }
 
 fn violation_for(
+    ctx: &Ctx,
     paragraph: &Paragraph,
     run: &Run,
     code: ErrorCode,
@@ -251,8 +325,8 @@ fn violation_for(
         char_pr_id_ref: run.char_pr_id_ref,
         para_pr_id_ref: paragraph.para_pr_id_ref,
         text: run.text.clone(),
-        page_no: 1,
-        line_no: 1,
+        page_no: ctx.page_no,
+        line_no: ctx.line_no,
         error_code: code,
         error_string: diagnostic,
         ..ViolationRecord::new(code)
@@ -282,6 +356,7 @@ mod tests {
             para_pr_id_ref: 0,
             style_id_ref: 0,
             runs: vec![run],
+            line_segs: Vec::new(),
         };
         let section = polaris_hwpx::Section {
             paragraphs: vec![paragraph],
@@ -371,6 +446,126 @@ mod tests {
         let r = validate(&doc, &spec, &EngineOptions::default());
         assert_eq!(r.violations.len(), 1);
         assert_eq!(r.violations[0].error_code.value(), 2050);
+    }
+
+    #[test]
+    fn page_line_accumulates_across_paragraphs() {
+        use polaris_hwpx::{LineSeg, Paragraph, Run, Section};
+
+        let mut header = Header::default();
+        header.face_names.push(FaceName {
+            id: 0,
+            lang: "HANGUL".into(),
+            face: "바탕".into(),
+        });
+        header.char_shapes.push(CharPr {
+            id: 0,
+            height: 1000,
+            font_ref: FontRef::default(),
+            ..CharPr::default()
+        });
+        header.char_shapes.push(CharPr {
+            id: 1,
+            height: 1200,
+            font_ref: FontRef::default(),
+            ..CharPr::default()
+        });
+        header.para_shapes.push(ParaPr {
+            id: 0,
+            ..ParaPr::default()
+        });
+
+        // Three paragraphs stacking downward at vert_pos 0, 1600, 3200.
+        let make_para = |char_ref: u32, text: &str, vp: i64| Paragraph {
+            id: 0,
+            para_pr_id_ref: 0,
+            style_id_ref: 0,
+            runs: vec![Run {
+                char_pr_id_ref: char_ref,
+                text: text.into(),
+            }],
+            line_segs: vec![LineSeg {
+                vert_pos: vp,
+                vert_size: 1000,
+                ..LineSeg::default()
+            }],
+        };
+
+        let doc = HwpxDocument {
+            mimetype: "application/hwp+zip".into(),
+            header,
+            sections: vec![Section {
+                paragraphs: vec![
+                    make_para(0, "clean1", 0),
+                    make_para(1, "bad", 1600),
+                    make_para(0, "clean2", 3200),
+                ],
+            }],
+        };
+
+        let spec: RuleSpec = serde_json::from_str(r#"{"charshape":{"fontsize":10}}"#).unwrap();
+        let r = validate(&doc, &spec, &EngineOptions::default());
+        assert_eq!(r.violations.len(), 1);
+        // First paragraph's opening lineseg (vert_pos=0) opens page 1 with
+        // line 1. After it, line_no advances to 2. The second paragraph's
+        // vert_pos=1600 >= 0 + 1000 so no new page — runs get PageNo=1,
+        // LineNo=2.
+        assert_eq!(r.violations[0].page_no, 1);
+        assert_eq!(r.violations[0].line_no, 2);
+    }
+
+    #[test]
+    fn page_break_when_vertpos_resets_to_zero() {
+        use polaris_hwpx::{LineSeg, Paragraph, Run, Section};
+
+        let mut header = Header::default();
+        header.face_names.push(FaceName {
+            id: 0,
+            lang: "HANGUL".into(),
+            face: "바탕".into(),
+        });
+        header.char_shapes.push(CharPr {
+            id: 0,
+            height: 1200,
+            font_ref: FontRef::default(),
+            ..CharPr::default()
+        });
+        header.para_shapes.push(ParaPr::default());
+
+        let make_para = |text: &str, vp: i64| Paragraph {
+            id: 0,
+            para_pr_id_ref: 0,
+            style_id_ref: 0,
+            runs: vec![Run {
+                char_pr_id_ref: 0,
+                text: text.into(),
+            }],
+            line_segs: vec![LineSeg {
+                vert_pos: vp,
+                vert_size: 1000,
+                ..LineSeg::default()
+            }],
+        };
+
+        let doc = HwpxDocument {
+            mimetype: "application/hwp+zip".into(),
+            header,
+            sections: vec![Section {
+                paragraphs: vec![
+                    make_para("p1", 0),
+                    make_para("p2", 1600),
+                    // Third paragraph wraps back to vert_pos=0 → new page.
+                    make_para("p3", 0),
+                ],
+            }],
+        };
+
+        let spec: RuleSpec = serde_json::from_str(r#"{"charshape":{"fontsize":10}}"#).unwrap();
+        let r = validate(&doc, &spec, &EngineOptions::default());
+        assert_eq!(r.violations.len(), 3);
+        assert_eq!((r.violations[0].page_no, r.violations[0].line_no), (1, 1));
+        assert_eq!((r.violations[1].page_no, r.violations[1].line_no), (1, 2));
+        assert_eq!((r.violations[2].page_no, r.violations[2].line_no), (2, 1));
     }
 
     #[test]

@@ -10,7 +10,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::container::local_name;
-use crate::types::{Paragraph, Run, Section};
+use crate::types::{LineSeg, Paragraph, Run, Section};
 use crate::HwpxError;
 
 pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
@@ -72,6 +72,27 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     }
                     "t" => {
                         in_text = !is_self_closing;
+                    }
+                    "lineseg" => {
+                        if let Some(p) = cur_para.as_mut() {
+                            let mut seg = LineSeg::default();
+                            for attr in e.attributes().flatten() {
+                                let k = local_name(attr.key.as_ref());
+                                let v = attr
+                                    .decode_and_unescape_value(&reader)
+                                    .map(|c| c.into_owned())
+                                    .unwrap_or_default();
+                                match k.as_str() {
+                                    "textpos" => seg.text_pos = v.parse().unwrap_or(0),
+                                    "vertpos" => seg.vert_pos = v.parse().unwrap_or(0),
+                                    "vertsize" => seg.vert_size = v.parse().unwrap_or(0),
+                                    "horzpos" => seg.horz_pos = v.parse().unwrap_or(0),
+                                    "horzsize" => seg.horz_size = v.parse().unwrap_or(0),
+                                    _ => {}
+                                }
+                            }
+                            p.line_segs.push(seg);
+                        }
                     }
                     _ => {}
                 }

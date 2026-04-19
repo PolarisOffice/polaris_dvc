@@ -277,11 +277,19 @@ impl Fixture {
     }
 
     fn section_xml(&self) -> String {
+        // Per-line vertical advance in HWPUNIT. Matches our fixture's
+        // vertsize=1000 + spacing=600. Real documents compute this from
+        // paraPr line spacing; for the validator harness, a fixed advance
+        // is enough as long as upstream's FindPageInfo sees paragraphs
+        // stacking downward (so no spurious page breaks).
+        const LINE_ADVANCE: i64 = 1_600;
+
         let mut s = String::new();
         s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
         s.push_str("<hs:sec ");
         s.push_str(HWPX_NAMESPACES);
         s.push('>');
+        let mut cumulative_vert: i64 = 0;
         for (pi, p) in self.paragraphs.iter().enumerate() {
             s.push_str(&format!(
                 "<hp:p id=\"{}\" paraPrIDRef=\"{}\" styleIDRef=\"0\" \
@@ -297,15 +305,19 @@ impl Fixture {
                 s.push_str(&format!("<hp:t>{}</hp:t>", xml_escape(&r.text)));
                 s.push_str("</hp:run>");
             }
-            // <hp:linesegarray> — one conservative lineseg per paragraph.
-            s.push_str(
+            // Single lineseg per paragraph, vertpos accumulating across
+            // paragraphs so the 2nd+ paragraph isn't interpreted as a new
+            // page by the engine's FindPageInfo port.
+            s.push_str(&format!(
                 "<hp:linesegarray>\
-                 <hp:lineseg textpos=\"0\" vertpos=\"0\" vertsize=\"1000\" \
+                 <hp:lineseg textpos=\"0\" vertpos=\"{}\" vertsize=\"1000\" \
                  textheight=\"1000\" baseline=\"850\" spacing=\"600\" \
                  horzpos=\"0\" horzsize=\"42520\" flags=\"393216\"/>\
                  </hp:linesegarray>",
-            );
+                cumulative_vert
+            ));
             s.push_str("</hp:p>");
+            cumulative_vert += LINE_ADVANCE;
         }
         s.push_str("</hs:sec>");
         s
