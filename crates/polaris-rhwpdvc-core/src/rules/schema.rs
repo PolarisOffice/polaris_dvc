@@ -295,12 +295,89 @@ pub struct TableSpec {
     pub size: Option<TableSizeSpec>,
     pub margin: Option<TableMarginSpec>,
     pub outside: Option<TableMarginSpec>,
+    pub bgfill: Option<BgFillSpec>,
+    pub caption: Option<TableCaptionSpec>,
     #[serde(rename = "treatAsChar")]
     pub treat_as_char: Option<bool>,
     #[serde(rename = "table-in-table")]
     pub table_in_table: Option<bool>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Background-fill rule. `type` is the upstream `BGFillType` ordinal
+/// (0=NONE, 1=SOLID, 2=PATTERN, 3=GRADATION, 4=IMAGE). `facecolor`
+/// and `pattoncolor` accept either a decimal/hex integer or a
+/// `#RRGGBB` string for user convenience.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct BgFillSpec {
+    #[serde(rename = "type")]
+    pub kind: Option<u32>,
+    pub facecolor: Option<ColorValue>,
+    pub pattoncolor: Option<ColorValue>,
+    pub pattontype: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Caption positioning/sizing rule for tables. Upstream
+/// `JID_TABLE_CAPTION_*` (3026–3030). Caption text position is typically
+/// one of `LEFT_TOP`, `TOP_CENTER`, `RIGHT_TOP`, `LEFT_MIDDLE`, etc.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct TableCaptionSpec {
+    pub position: Option<String>,
+    pub size: Option<Range64>,
+    pub spacing: Option<Range64>,
+    #[serde(rename = "socapfullsize")]
+    pub so_cap_full_size: Option<bool>,
+    pub linewrap: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// A color value — accepts plain integer (decimal), `#RRGGBB` /
+/// `RRGGBB` string. Internal representation is `u32` (packed RGB), so
+/// the engine can compare numerically against HWPX's `#RRGGBB` strings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ColorValue(pub u32);
+
+impl<'de> Deserialize<'de> for ColorValue {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, Visitor};
+        use std::fmt;
+
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = ColorValue;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("integer color or #RRGGBB string")
+            }
+            fn visit_u64<E: Error>(self, v: u64) -> Result<ColorValue, E> {
+                Ok(ColorValue(v as u32))
+            }
+            fn visit_i64<E: Error>(self, v: i64) -> Result<ColorValue, E> {
+                Ok(ColorValue(v as u32))
+            }
+            fn visit_str<E: Error>(self, s: &str) -> Result<ColorValue, E> {
+                let t = s.trim_start_matches('#');
+                if let Ok(v) = u32::from_str_radix(t, 16) {
+                    return Ok(ColorValue(v));
+                }
+                s.parse::<u32>()
+                    .map(ColorValue)
+                    .map_err(|_| E::custom(format!("color: cannot parse {s:?}")))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl Serialize for ColorValue {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u32(self.0)
+    }
 }
 
 /// Table width/height (in HWPUNIT). Both support ranges.

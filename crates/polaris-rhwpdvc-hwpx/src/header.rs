@@ -6,8 +6,8 @@ use quick_xml::Reader;
 
 use crate::container::local_name;
 use crate::types::{
-    Border, BorderFill, Bullet, CharPr, FaceName, FontRef, Header, Numbering, ParaHead, ParaPr,
-    Shadow, Strikeout, Style, Underline,
+    Border, BorderFill, Bullet, CharPr, FaceName, Fill, FillBrush, FillGradation, FontRef, Header,
+    Numbering, ParaHead, ParaPr, Shadow, Strikeout, Style, Underline,
 };
 use crate::HwpxError;
 
@@ -249,6 +249,44 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                                 "topBorder" => bf.top = border,
                                 "bottomBorder" => bf.bottom = border,
                                 _ => unreachable!(),
+                            }
+                        }
+                    }
+                    // Fill sub-elements under <hh:borderFill>. Upstream writes
+                    // at most one of winBrush / gradation / imgBrush per
+                    // borderFill, so we take the first we see (Fill::None
+                    // default → set once, subsequent ones ignored).
+                    "winBrush" if cur_border_fill.is_some() => {
+                        let brush = FillBrush {
+                            face_color: attr(&attrs, "faceColor").unwrap_or_default(),
+                            hatch_color: attr(&attrs, "hatchColor").unwrap_or_default(),
+                            hatch_style: attr(&attrs, "hatchStyle").unwrap_or_default(),
+                            alpha: attr_u32(&attrs, "alpha").unwrap_or(0),
+                        };
+                        if let Some(bf) = cur_border_fill.as_mut() {
+                            if matches!(bf.fill, Fill::None) {
+                                bf.fill = Fill::Brush(brush);
+                            }
+                        }
+                    }
+                    "gradation" if cur_border_fill.is_some() => {
+                        let grad = FillGradation {
+                            kind: attr(&attrs, "type").unwrap_or_default(),
+                            angle: attr_i32(&attrs, "angle").unwrap_or(0),
+                            center_x: attr_i32(&attrs, "centerX").unwrap_or(0),
+                            center_y: attr_i32(&attrs, "centerY").unwrap_or(0),
+                            colors: Vec::new(),
+                        };
+                        if let Some(bf) = cur_border_fill.as_mut() {
+                            if matches!(bf.fill, Fill::None) {
+                                bf.fill = Fill::Gradation(grad);
+                            }
+                        }
+                    }
+                    "imgBrush" if cur_border_fill.is_some() => {
+                        if let Some(bf) = cur_border_fill.as_mut() {
+                            if matches!(bf.fill, Fill::None) {
+                                bf.fill = Fill::Image;
                             }
                         }
                     }

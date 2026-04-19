@@ -25,8 +25,8 @@ use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 use serde_json::Value;
 
 use support::{
-    FixBorderFill, FixBullet, FixCharPr, FixNumbering, FixParaHead, FixParaPr, FixParagraph,
-    FixRun, FixTable, Fixture,
+    FixBorderFill, FixBullet, FixCharPr, FixFillBrush, FixNumbering, FixParaHead, FixParaPr,
+    FixParagraph, FixRun, FixTable, Fixture,
 };
 
 struct Case {
@@ -355,6 +355,52 @@ fn cases() -> Vec<Case> {
   "table": { "treatAsChar": true }
 }
 "#,
+        },
+        Case {
+            name: "24_table_bgfill_type_mismatch",
+            build: || {
+                // Baseline borderFill has no <hh:fillBrush>, so Fill::None
+                // (ordinal 0). Spec demands SOLID (1) → JID 3037 fires.
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 600,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "bgfill": { "type": 1 } }
+}
+"#,
+        },
+        Case {
+            name: "25_table_bgfill_facecolor_mismatch",
+            build: || {
+                // borderFill id=3 has a winBrush with a specific faceColor.
+                // Spec demands a different faceColor → JID 3038 fires.
+                let mut f = Fixture::baseline();
+                let mut bf = FixBorderFill::solid_default(3);
+                bf.fill_brush = Some(FixFillBrush {
+                    face_color: "#FF0000".into(),
+                    hatch_color: "#000000".into(),
+                    hatch_style: "NONE".into(),
+                    alpha: 0,
+                });
+                f.border_fills.push(bf);
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 601,
+                    border_fill_id_ref: 3,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r##"{
+  "table": { "bgfill": { "facecolor": "#FFFFFF" } }
+}
+"##,
         },
         Case {
             name: "19_fontsize_range_ok",

@@ -67,6 +67,84 @@ pub struct BorderFill {
     pub right: Border,
     pub top: Border,
     pub bottom: Border,
+    /// Populated from `<hh:fillBrush>`/`<hh:winBrush>`/`<hh:gradation>`
+    /// sub-elements of `<hh:borderFill>`. Drives DVC's `table.bgfill`
+    /// rule — tables reference a borderFill by id, and the borderFill
+    /// carries both the line info and the fill info.
+    pub fill: Fill,
+}
+
+/// Background fill variant. Upstream `BGFillType` enum: NONE=0, SOLID=1,
+/// PATTERN=2, GRADATION=3, IMAGE=4. We distinguish SOLID vs PATTERN by
+/// looking at `<hh:winBrush>`'s `hatchStyle` attribute — non-NONE means
+/// PATTERN.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum Fill {
+    #[default]
+    None,
+    /// Plain or pattern fill (`<hh:winBrush>`).
+    Brush(FillBrush),
+    /// Linear/radial gradient (`<hh:gradation>`).
+    Gradation(FillGradation),
+    /// Image/picture fill (`<hh:imgBrush>`).
+    Image,
+}
+
+impl Fill {
+    /// Upstream `BGFillType` ordinal. Pattern vs solid is distinguished
+    /// by `hatchStyle != "NONE"`.
+    pub fn ordinal(&self) -> u32 {
+        match self {
+            Fill::None => 0,
+            Fill::Brush(b) => {
+                if b.hatch_style.is_empty() || b.hatch_style.eq_ignore_ascii_case("NONE") {
+                    1 // SOLID
+                } else {
+                    2 // PATTERN
+                }
+            }
+            Fill::Gradation(_) => 3,
+            Fill::Image => 4,
+        }
+    }
+
+    pub fn face_color_hex(&self) -> Option<&str> {
+        match self {
+            Fill::Brush(b) => Some(b.face_color.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn patton_color_hex(&self) -> Option<&str> {
+        match self {
+            Fill::Brush(b) => Some(b.hatch_color.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn patton_type(&self) -> Option<&str> {
+        match self {
+            Fill::Brush(b) => Some(b.hatch_style.as_str()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct FillBrush {
+    pub face_color: String,
+    pub hatch_color: String,
+    pub hatch_style: String,
+    pub alpha: u32,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct FillGradation {
+    pub kind: String,
+    pub angle: i32,
+    pub center_x: i32,
+    pub center_y: i32,
+    pub colors: Vec<String>,
 }
 
 /// A single side of a `BorderFill`. `kind` is the upstream `LineShape`

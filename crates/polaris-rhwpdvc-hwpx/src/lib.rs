@@ -13,9 +13,9 @@ mod section;
 mod types;
 
 pub use types::{
-    Border, BorderFill, Bullet, CharPr, FaceName, FontRef, Header, HwpxDocument, LineSeg,
-    Numbering, ParaHead, ParaPr, Paragraph, Run, Section, Shadow, Strikeout, Style, Table,
-    TableEdges, TablePos, TableSz, Underline,
+    Border, BorderFill, Bullet, CharPr, FaceName, Fill, FillBrush, FillGradation, FontRef, Header,
+    HwpxDocument, LineSeg, Numbering, ParaHead, ParaPr, Paragraph, Run, Section, Shadow, Strikeout,
+    Style, Table, TableEdges, TablePos, TableSz, Underline,
 };
 
 #[derive(Debug, Error)]

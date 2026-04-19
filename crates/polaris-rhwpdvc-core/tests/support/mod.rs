@@ -75,6 +75,19 @@ pub struct FixBorderFill {
     pub bottom_kind: String,
     pub bottom_width_mm: f64,
     pub bottom_color: String,
+    /// When set, emit `<hh:fillBrush><hh:winBrush faceColor=... hatchColor=
+    /// ... hatchStyle=...></hh:fillBrush>` — gives the borderFill a
+    /// background fill so DVC's `table.bgfill` rule has something to
+    /// compare against. `None` leaves the borderFill fill-less.
+    pub fill_brush: Option<FixFillBrush>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FixFillBrush {
+    pub face_color: String,
+    pub hatch_color: String,
+    pub hatch_style: String,
+    pub alpha: u32,
 }
 
 impl FixBorderFill {
@@ -95,6 +108,7 @@ impl FixBorderFill {
             bottom_kind: "SOLID".into(),
             bottom_width_mm: 0.12,
             bottom_color: "#000000".into(),
+            fill_brush: None,
         }
     }
 }
@@ -314,8 +328,7 @@ impl Fixture {
                  <hh:rightBorder type=\"{}\" width=\"{:.2} mm\" color=\"{}\"/>\
                  <hh:topBorder type=\"{}\" width=\"{:.2} mm\" color=\"{}\"/>\
                  <hh:bottomBorder type=\"{}\" width=\"{:.2} mm\" color=\"{}\"/>\
-                 <hh:diagonal type=\"SOLID\" width=\"0.12 mm\" color=\"#000000\"/>\
-                 </hh:borderFill>",
+                 <hh:diagonal type=\"SOLID\" width=\"0.12 mm\" color=\"#000000\"/>",
                 bf.id,
                 bf.left_kind,
                 bf.left_width_mm,
@@ -330,6 +343,16 @@ impl Fixture {
                 bf.bottom_width_mm,
                 bf.bottom_color,
             ));
+            if let Some(brush) = &bf.fill_brush {
+                s.push_str(&format!(
+                    "<hh:fillBrush>\
+                     <hh:winBrush faceColor=\"{}\" hatchColor=\"{}\" \
+                     hatchStyle=\"{}\" alpha=\"{}\"/>\
+                     </hh:fillBrush>",
+                    brush.face_color, brush.hatch_color, brush.hatch_style, brush.alpha
+                ));
+            }
+            s.push_str("</hh:borderFill>");
         }
         s.push_str("</hh:borderFills>");
         // charProperties

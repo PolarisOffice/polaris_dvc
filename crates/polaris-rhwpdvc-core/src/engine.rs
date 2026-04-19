@@ -692,6 +692,17 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
         }
     }
 
+    // bgfill checks live on the referenced <hh:borderFill>. Same lookup
+    // as borders — if the borderFill is missing we silently skip (the
+    // document is malformed, but there's nothing for us to compare).
+    if let Some(bgspec) = spec.bgfill.as_ref() {
+        if let Some(bf) = ctx.doc.header.border_fill(table.border_fill_id_ref) {
+            if !check_bgfill(ctx, table, &bf.fill, bgspec) {
+                return false;
+            }
+        }
+    }
+
     if let Some(borders) = spec.border.as_ref() {
         let Some(bf) = ctx.doc.header.border_fill(table.border_fill_id_ref) else {
             return true; // Missing borderFill — nothing to compare.
@@ -705,6 +716,90 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
             };
             if !check_border_side(ctx, table, position, side, rule) {
                 return false;
+            }
+        }
+    }
+    true
+}
+
+fn check_bgfill(
+    ctx: &mut Ctx,
+    table: &Table,
+    fill: &polaris_rhwpdvc_hwpx::Fill,
+    spec: &crate::rules::schema::BgFillSpec,
+) -> bool {
+    if let Some(expected) = spec.kind {
+        let actual = fill.ordinal();
+        if actual != expected {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_BGFILL_TYPE,
+                format!(
+                    "table {} bgfill type {} != spec {}",
+                    table.id, actual, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+    if let Some(expected) = spec.facecolor.as_ref() {
+        if let Some(actual_hex) = fill.face_color_hex() {
+            if let Some(actual) = decode_hex_color(actual_hex) {
+                if actual != expected.0 {
+                    let v = table_violation(
+                        ctx,
+                        table,
+                        jid::TABLE_BGFILL_FACECOLOR,
+                        format!(
+                            "table {} bgfill facecolor {:#x} != spec {:#x}",
+                            table.id, actual, expected.0
+                        ),
+                    );
+                    if !ctx.push(v) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    if let Some(expected) = spec.pattoncolor.as_ref() {
+        if let Some(actual_hex) = fill.patton_color_hex() {
+            if let Some(actual) = decode_hex_color(actual_hex) {
+                if actual != expected.0 {
+                    let v = table_violation(
+                        ctx,
+                        table,
+                        jid::TABLE_BGFILL_PATTONCOLOR,
+                        format!(
+                            "table {} bgfill pattoncolor {:#x} != spec {:#x}",
+                            table.id, actual, expected.0
+                        ),
+                    );
+                    if !ctx.push(v) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    if let Some(expected) = spec.pattontype.as_deref() {
+        if let Some(actual) = fill.patton_type() {
+            if !actual.eq_ignore_ascii_case(expected) {
+                let v = table_violation(
+                    ctx,
+                    table,
+                    jid::TABLE_BGFILL_PATTONTYPE,
+                    format!(
+                        "table {} bgfill pattontype \"{}\" != spec \"{}\"",
+                        table.id, actual, expected
+                    ),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
             }
         }
     }
@@ -1281,6 +1376,7 @@ mod tests {
                 width_mm: 0.12,
                 color: "#000000".into(),
             },
+            fill: polaris_rhwpdvc_hwpx::Fill::None,
         });
 
         let doc = HwpxDocument {
