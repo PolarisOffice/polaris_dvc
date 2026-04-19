@@ -9,5 +9,6 @@ pub mod schema;
 pub use loader::{load_spec, SpecLoadError};
 pub use schema::{
     BorderRule, BulletSpec, CharShape, LevelType, OutlineShape, ParaNumBullet, ParaShape,
-    Permission, RuleSpec, SpecialCharacter, StringList, TableSpec,
+    Permission, Range64, RuleSpec, SpecialCharacter, StringList, TableMarginSpec, TableSizeSpec,
+    TableSpec,
 };

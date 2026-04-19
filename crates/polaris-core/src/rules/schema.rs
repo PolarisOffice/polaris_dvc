@@ -61,6 +61,124 @@ impl Serialize for StringList {
     }
 }
 
+/// Numeric spec value that may be either a scalar (equality check) or a
+/// `{ "min": X, "max": Y }` / `{ "min": X }` / `{ "max": Y }` object
+/// (inclusive range check). Mirrors the shape in upstream's schema
+/// documentation (`sample/jsonFullSpec.json`): `"fontsize": { "min":
+/// number, "max": number }`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Range64 {
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub exact: Option<f64>,
+}
+
+impl Range64 {
+    pub fn from_exact(v: f64) -> Self {
+        Self {
+            exact: Some(v),
+            ..Self::default()
+        }
+    }
+
+    /// `true` iff `v` satisfies whichever form the spec used. Empty
+    /// ranges (no exact, no min, no max) match everything — callers
+    /// should gate with `.is_constrained()` before running the check.
+    pub fn matches(&self, v: f64) -> bool {
+        if let Some(e) = self.exact {
+            return (v - e).abs() <= f64::EPSILON;
+        }
+        if let Some(lo) = self.min {
+            if v < lo {
+                return false;
+            }
+        }
+        if let Some(hi) = self.max {
+            if v > hi {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_constrained(&self) -> bool {
+        self.exact.is_some() || self.min.is_some() || self.max.is_some()
+    }
+
+    /// Human-readable representation, used in diagnostic strings so
+    /// error messages show what the spec required.
+    pub fn describe(&self) -> String {
+        if let Some(e) = self.exact {
+            return format!("{}", e);
+        }
+        match (self.min, self.max) {
+            (Some(lo), Some(hi)) => format!("{}..={}", lo, hi),
+            (Some(lo), None) => format!(">= {}", lo),
+            (None, Some(hi)) => format!("<= {}", hi),
+            (None, None) => "*".into(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Range64 {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, MapAccess, Visitor};
+        use std::fmt;
+
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = Range64;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("number or {min, max} object")
+            }
+            fn visit_i64<E: Error>(self, v: i64) -> Result<Range64, E> {
+                Ok(Range64::from_exact(v as f64))
+            }
+            fn visit_u64<E: Error>(self, v: u64) -> Result<Range64, E> {
+                Ok(Range64::from_exact(v as f64))
+            }
+            fn visit_f64<E: Error>(self, v: f64) -> Result<Range64, E> {
+                Ok(Range64::from_exact(v))
+            }
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Range64, M::Error> {
+                let mut r = Range64::default();
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "min" => r.min = Some(map.next_value()?),
+                        "max" => r.max = Some(map.next_value()?),
+                        // Tolerate upstream's `"type": "number"` shape
+                        // from jsonFullSpec.json — it's a schema marker,
+                        // not a constraint. Skip.
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+                Ok(r)
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+impl Serialize for Range64 {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        if let Some(e) = self.exact {
+            return s.serialize_f64(e);
+        }
+        let len = self.min.is_some() as usize + self.max.is_some() as usize;
+        let mut m = s.serialize_map(Some(len))?;
+        if let Some(lo) = self.min {
+            m.serialize_entry("min", &lo)?;
+        }
+        if let Some(hi) = self.max {
+            m.serialize_entry("max", &hi)?;
+        }
+        m.end()
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "lowercase")]
 pub struct RuleSpec {
@@ -141,9 +259,9 @@ pub struct CharShape {
     pub langtype: Option<String>,
     /// Allowed fonts. Accepts either `"바탕"` or `["바탕", "돋움"]`.
     pub font: Option<StringList>,
-    pub fontsize: Option<f64>,
-    pub ratio: Option<f64>,
-    pub spacing: Option<f64>,
+    pub fontsize: Option<Range64>,
+    pub ratio: Option<Range64>,
+    pub spacing: Option<Range64>,
     pub bold: Option<bool>,
     pub italic: Option<bool>,
     pub underline: Option<bool>,
@@ -156,14 +274,14 @@ pub struct CharShape {
 #[serde(default, rename_all = "lowercase")]
 pub struct ParaShape {
     pub align: Option<String>,
-    pub linespacing: Option<f64>,
-    pub linespacingvalue: Option<f64>,
+    pub linespacing: Option<Range64>,
+    pub linespacingvalue: Option<Range64>,
     #[serde(rename = "spacing-paraup")]
-    pub spacing_paraup: Option<f64>,
+    pub spacing_paraup: Option<Range64>,
     #[serde(rename = "spacing-parabottom")]
-    pub spacing_parabottom: Option<f64>,
-    pub indent: Option<f64>,
-    pub outdent: Option<f64>,
+    pub spacing_parabottom: Option<Range64>,
+    pub indent: Option<Range64>,
+    pub outdent: Option<Range64>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -174,10 +292,37 @@ pub struct TableSpec {
     /// Per-side border rules. Positions 1..=4 conventionally map to
     /// top/bottom/left/right in upstream samples.
     pub border: Option<Vec<BorderRule>>,
+    pub size: Option<TableSizeSpec>,
+    pub margin: Option<TableMarginSpec>,
+    pub outside: Option<TableMarginSpec>,
     #[serde(rename = "treatAsChar")]
     pub treat_as_char: Option<bool>,
     #[serde(rename = "table-in-table")]
     pub table_in_table: Option<bool>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Table width/height (in HWPUNIT). Both support ranges.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct TableSizeSpec {
+    pub width: Option<Range64>,
+    pub height: Option<Range64>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Per-side table margin spec. Used for both `margin` (inner/cell
+/// margin → `<hp:inMargin>`) and `outside` (outer margin →
+/// `<hp:outside>`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct TableMarginSpec {
+    pub left: Option<Range64>,
+    pub right: Option<Range64>,
+    pub top: Option<Range64>,
+    pub bottom: Option<Range64>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -219,11 +364,57 @@ mod tests {
             spec.charshape.as_ref().unwrap().font.as_ref().unwrap().0,
             vec!["바탕".to_string()]
         );
-        assert_eq!(spec.charshape.as_ref().unwrap().fontsize, Some(10.0));
         assert_eq!(
-            spec.parashape.as_ref().unwrap().linespacingvalue,
+            spec.charshape
+                .as_ref()
+                .unwrap()
+                .fontsize
+                .as_ref()
+                .unwrap()
+                .exact,
+            Some(10.0)
+        );
+        assert_eq!(
+            spec.parashape
+                .as_ref()
+                .unwrap()
+                .linespacingvalue
+                .as_ref()
+                .unwrap()
+                .exact,
             Some(160.0)
         );
+    }
+
+    #[test]
+    fn range_spec_min_max() {
+        let src = r#"{
+            "charshape": { "fontsize": { "min": 10, "max": 12 } },
+            "parashape": { "linespacingvalue": { "min": 160 } }
+        }"#;
+        let spec: RuleSpec = serde_json::from_str(src).unwrap();
+        let fs = spec.charshape.as_ref().unwrap().fontsize.as_ref().unwrap();
+        assert_eq!(fs.min, Some(10.0));
+        assert_eq!(fs.max, Some(12.0));
+        assert!(fs.exact.is_none());
+        assert!(fs.matches(10.0));
+        assert!(fs.matches(11.5));
+        assert!(fs.matches(12.0));
+        assert!(!fs.matches(9.9));
+        assert!(!fs.matches(12.1));
+
+        let ls = spec
+            .parashape
+            .as_ref()
+            .unwrap()
+            .linespacingvalue
+            .as_ref()
+            .unwrap();
+        assert_eq!(ls.min, Some(160.0));
+        assert!(ls.max.is_none());
+        assert!(ls.matches(160.0));
+        assert!(ls.matches(200.0));
+        assert!(!ls.matches(140.0));
     }
 
     #[test]
@@ -261,7 +452,13 @@ mod tests {
         assert!(fonts.contains("바탕"));
         assert!(fonts.contains("맑은 고딕"));
         assert_eq!(
-            spec.parashape.as_ref().unwrap().linespacingvalue,
+            spec.parashape
+                .as_ref()
+                .unwrap()
+                .linespacingvalue
+                .as_ref()
+                .unwrap()
+                .exact,
             Some(160.0)
         );
         let borders = spec.table.as_ref().unwrap().border.as_ref().unwrap();

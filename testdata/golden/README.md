@@ -38,3 +38,8 @@ Current cases:
 | `16_bullet_char_not_allowed` | header bullet char `★` vs spec `bulletshapes:"□○-•*"` → `ErrorCode: 3304` |
 | `17_outlineshape_numtype_mismatch` | numbering level 1 numFormat `"^1)"` vs spec `numbertype:"^1."` → `ErrorCode: 3206` |
 | `18_paranumbullet_numshape_mismatch` | numbering level 2 numberShape 3 vs spec `numbershape:8` → `ErrorCode: 3407` |
+| `19_fontsize_range_ok` | charPr 11pt, spec `fontsize: {min:10, max:12}` → empty array (range hit) |
+| `20_fontsize_range_above_max` | charPr 14pt, spec `fontsize: {min:10, max:12}` → `ErrorCode: 1001` (above max) |
+| `21_table_size_width_mismatch` | table width 42520 vs spec `size.width:30000` → `ErrorCode: 3001` |
+| `22_table_margin_range_ok` | inMargin 141 on all sides, spec margin range `{min:100,max:200}` on all sides → empty array |
+| `23_table_treat_as_char_mismatch` | table `pos.treatAsChar=0` vs spec `treatAsChar:true` → `ErrorCode: 3004` |

@@ -33,6 +33,10 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
     // on End. Used to assign `nesting_depth` so a table inside another table
     // (upstream `isInTableInTable`) is flagged.
     let mut table_depth: u32 = 0;
+    // Stack of indices into `section.tables` — points to the innermost open
+    // `<hp:tbl>` so we can fill its <hp:sz>/<hp:pos>/<hp:outside>/<hp:inMargin>
+    // attributes onto the right entry.
+    let mut table_stack: Vec<usize> = Vec::new();
 
     loop {
         let event = reader.read_event_into(&mut buf);
@@ -117,12 +121,95 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                                 "borderFillIDRef" => t.border_fill_id_ref = v.parse().unwrap_or(0),
                                 "rowCnt" => t.row_cnt = v.parse().unwrap_or(0),
                                 "colCnt" => t.col_cnt = v.parse().unwrap_or(0),
+                                "cellSpacing" => t.cell_spacing = v.parse().unwrap_or(0),
                                 _ => {}
                             }
                         }
                         section.tables.push(t);
+                        let idx = section.tables.len() - 1;
                         if !is_self_closing {
                             table_depth = table_depth.saturating_add(1);
+                            table_stack.push(idx);
+                        }
+                    }
+                    // `<hp:sz>` inside a `<hp:tbl>` gives the table's width/
+                    // height. When it appears inside `<hp:tc>` or `<hp:shape>`
+                    // the outer `table_stack.last()` is None or a different
+                    // layer; we gate on the stack so cell-level sizes don't
+                    // overwrite the enclosing table.
+                    "sz" if !table_stack.is_empty() => {
+                        let mut sz = crate::types::TableSz::default();
+                        for attr in e.attributes().flatten() {
+                            let k = local_name(attr.key.as_ref());
+                            let v = attr
+                                .decode_and_unescape_value(&reader)
+                                .map(|c| c.into_owned())
+                                .unwrap_or_default();
+                            match k.as_str() {
+                                "width" => sz.width = v.parse().unwrap_or(0),
+                                "widthRelTo" => sz.width_rel_to = v,
+                                "height" => sz.height = v.parse().unwrap_or(0),
+                                "heightRelTo" => sz.height_rel_to = v,
+                                "protect" => {
+                                    sz.protect = v == "1" || v.eq_ignore_ascii_case("true")
+                                }
+                                _ => {}
+                            }
+                        }
+                        let idx = *table_stack.last().unwrap();
+                        // Only assign to the *outermost* open table that
+                        // still has zero width — guards against <hp:sz>
+                        // inside nested table cells clobbering the parent.
+                        if section.tables[idx].sz.width == 0 {
+                            section.tables[idx].sz = sz;
+                        }
+                    }
+                    "pos" if !table_stack.is_empty() => {
+                        let mut p = crate::types::TablePos::default();
+                        for attr in e.attributes().flatten() {
+                            let k = local_name(attr.key.as_ref());
+                            let v = attr
+                                .decode_and_unescape_value(&reader)
+                                .map(|c| c.into_owned())
+                                .unwrap_or_default();
+                            let b = |s: &str| s == "1" || s.eq_ignore_ascii_case("true");
+                            match k.as_str() {
+                                "treatAsChar" => p.treat_as_char = b(&v),
+                                "affectLSpacing" => p.affect_l_spacing = b(&v),
+                                "flowWithText" => p.flow_with_text = b(&v),
+                                "allowOverlap" => p.allow_overlap = b(&v),
+                                "holdAnchorAndSO" => p.hold_anchor_and_so = b(&v),
+                                "vertRelTo" => p.vert_rel_to = v,
+                                "horzRelTo" => p.horz_rel_to = v,
+                                "vertAlign" => p.vert_align = v,
+                                "horzAlign" => p.horz_align = v,
+                                "vertOffset" => p.vert_offset = v.parse().unwrap_or(0),
+                                "horzOffset" => p.horz_offset = v.parse().unwrap_or(0),
+                                _ => {}
+                            }
+                        }
+                        let idx = *table_stack.last().unwrap();
+                        // Assign only to the outermost open table (parent
+                        // scope) — first pos wins.
+                        if section.tables[idx].pos.vert_rel_to.is_empty()
+                            && section.tables[idx].pos.horz_rel_to.is_empty()
+                            && !section.tables[idx].pos.treat_as_char
+                        {
+                            section.tables[idx].pos = p;
+                        }
+                    }
+                    "outside" if !table_stack.is_empty() => {
+                        let edges = parse_edges(&e, &reader);
+                        let idx = *table_stack.last().unwrap();
+                        if section.tables[idx].outside == crate::types::TableEdges::default() {
+                            section.tables[idx].outside = edges;
+                        }
+                    }
+                    "inMargin" if !table_stack.is_empty() => {
+                        let edges = parse_edges(&e, &reader);
+                        let idx = *table_stack.last().unwrap();
+                        if section.tables[idx].in_margin == crate::types::TableEdges::default() {
+                            section.tables[idx].in_margin = edges;
                         }
                     }
                     "t" => {
@@ -175,6 +262,7 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     }
                     "tbl" => {
                         table_depth = table_depth.saturating_sub(1);
+                        table_stack.pop();
                     }
                     _ => {}
                 }
@@ -193,6 +281,29 @@ fn commit_run(cur_run: &mut Option<Run>, cur_para: &mut Option<Paragraph>) {
     if let (Some(r), Some(p)) = (cur_run.take(), cur_para.as_mut()) {
         p.runs.push(r);
     }
+}
+
+fn parse_edges<R>(
+    e: &quick_xml::events::BytesStart,
+    reader: &quick_xml::Reader<R>,
+) -> crate::types::TableEdges {
+    let mut edges = crate::types::TableEdges::default();
+    for attr in e.attributes().flatten() {
+        let k = local_name(attr.key.as_ref());
+        let v = attr
+            .decode_and_unescape_value(reader)
+            .map(|c| c.into_owned())
+            .unwrap_or_default();
+        let n: i64 = v.parse().unwrap_or(0);
+        match k.as_str() {
+            "left" => edges.left = n,
+            "right" => edges.right = n,
+            "top" => edges.top = n,
+            "bottom" => edges.bottom = n,
+            _ => {}
+        }
+    }
+    edges
 }
 
 #[cfg(test)]

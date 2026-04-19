@@ -183,19 +183,65 @@ pub struct Section {
     pub tables: Vec<Table>,
 }
 
-/// A `<hp:tbl>` occurrence. We collect just enough for DVC's table rules
-/// today — the `border_fill_id_ref` drives border validation, and
-/// `row_cnt` / `col_cnt` are recorded for future size checks.
+/// A `<hp:tbl>` occurrence. We collect every sub-element the DVC rule
+/// categories care about.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Table {
     pub id: u32,
     pub border_fill_id_ref: u32,
     pub row_cnt: u32,
     pub col_cnt: u32,
+    pub cell_spacing: i64,
     /// Nesting depth. 0 = top-level table, 1+ = table-in-table. Upstream
     /// `isInTableInTable` fires on depth ≥ 1, which drives the
     /// `table-in-table: false` spec rule.
     pub nesting_depth: u32,
+    /// Populated from `<hp:sz width="..." height="...">`.
+    pub sz: TableSz,
+    /// Populated from `<hp:pos treatAsChar="..." ...>`.
+    pub pos: TablePos,
+    /// Populated from `<hp:outside left="..." right="..." top="..." bottom="...">`.
+    pub outside: TableEdges,
+    /// Populated from `<hp:inMargin left="..." right="..." top="..." bottom="...">`
+    /// — the per-table inner margin ("margin" in DVC spec lingo).
+    pub in_margin: TableEdges,
+}
+
+/// `<hp:sz>` (table size). `width_rel_to` / `height_rel_to` are upstream
+/// enum strings like `ABSOLUTE` / `PAGE` / `PARA`.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TableSz {
+    pub width: i64,
+    pub width_rel_to: String,
+    pub height: i64,
+    pub height_rel_to: String,
+    pub protect: bool,
+}
+
+/// `<hp:pos>` (table positioning). `treat_as_char` drives the DVC
+/// `table.treatAsChar` rule.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TablePos {
+    pub treat_as_char: bool,
+    pub affect_l_spacing: bool,
+    pub flow_with_text: bool,
+    pub allow_overlap: bool,
+    pub hold_anchor_and_so: bool,
+    pub vert_rel_to: String,
+    pub horz_rel_to: String,
+    pub vert_align: String,
+    pub horz_align: String,
+    pub vert_offset: i64,
+    pub horz_offset: i64,
+}
+
+/// Shared four-side record for `<hp:outside>` / `<hp:inMargin>`.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct TableEdges {
+    pub left: i64,
+    pub right: i64,
+    pub top: i64,
+    pub bottom: i64,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

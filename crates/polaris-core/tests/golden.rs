@@ -296,6 +296,91 @@ fn cases() -> Vec<Case> {
 "#,
         },
         Case {
+            name: "21_table_size_width_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                // Fixture default width is 42520. Spec requires exactly 30000.
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 500,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "size": { "width": 30000 } }
+}
+"#,
+        },
+        Case {
+            name: "22_table_margin_range_ok",
+            build: || {
+                let mut f = Fixture::baseline();
+                // Fixture inMargin is 141 on every side. Range includes it.
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 501,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": {
+    "margin": {
+      "left":   { "min": 100, "max": 200 },
+      "right":  { "min": 100, "max": 200 },
+      "top":    { "min": 100, "max": 200 },
+      "bottom": { "min": 100, "max": 200 }
+    }
+  }
+}
+"#,
+        },
+        Case {
+            name: "23_table_treat_as_char_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                // Fixture emits treatAsChar="0" (false). Spec demands true.
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 502,
+                    border_fill_id_ref: 1,
+                    row_cnt: 1,
+                    col_cnt: 1,
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "treatAsChar": true }
+}
+"#,
+        },
+        Case {
+            name: "19_fontsize_range_ok",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].height = 1100; // 11pt, within {min:10, max:12}
+                f
+            },
+            spec: r#"{
+  "charshape": { "fontsize": { "min": 10, "max": 12 } }
+}
+"#,
+        },
+        Case {
+            name: "20_fontsize_range_above_max",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].height = 1400; // 14pt, above max:12
+                f
+            },
+            spec: r#"{
+  "charshape": { "fontsize": { "min": 10, "max": 12 } }
+}
+"#,
+        },
+        Case {
             name: "15_specialcharacter_below_minimum",
             build: || {
                 let mut f = Fixture::baseline();

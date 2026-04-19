@@ -25,7 +25,7 @@
 
 **예상 작업량**: Windows 환경에서 초기 1~2 커밋, 이후 이터레이션 N회.
 
-### 2. Table 카테고리 전체 확장
+### 2. Table 카테고리 전체 확장 — ⏳ 진행 중
 **왜**: 한국 공공문서의 절대 다수가 표를 가짐. 현재 우린 border +
 `table-in-table` 2개만 본다. 업스트림 `JID_TABLE_*`은 56개.
 
@@ -38,14 +38,15 @@
   `bgfill` 등 필드 추가
 
 **현재**:
-- 구현: border 4방향(type/size/color), table-in-table
-- 미구현: width/height, bgfill, gradient, picture, effect, margin,
-  caption, pos, textwrap, rotation, outside line, 셀 단위 속성 전부
+- 구현: border 4방향(type/size/color), table-in-table, size.width/height,
+  margin(inMargin) 4방향, treatAsChar
+- 미구현: outside margin, bgfill, gradient, picture, effect, caption, pos
+  세부, textwrap, rotation, 셀 단위 속성 전부
 
 **예상 작업량**: 5~8 커밋. 한국 공공문서 샘플로 P0-1과 함께 검증하면서
 우선 순위 있는 필드부터.
 
-### 3. 범위 기반 spec 값 지원 (`{min, max}` 구조)
+### 3. 범위 기반 spec 값 지원 (`{min, max}` 구조) — ✅ 완료
 **왜**: 업스트림 spec은 여러 필드에서 `{ "min": 10, "max": 14 }` 형태를
 받는다. 우리는 전부 단일값 등가비교만 지원.
 
@@ -58,9 +59,9 @@
   (이미 별개 필드)
 - 엔진: 각 비교 분기를 `is_in_range` 로 교체
 
-**현재**: 전부 `Option<f64>` 등가비교.
-
-**예상 작업량**: 2~3 커밋.
+**현재**: `Range64` 타입으로 단일 값 + `{min, max}` 모두 수용.
+CharShape (fontsize/ratio/spacing), ParaShape (linespacingvalue/
+spacing-paraup/parabottom/indent/outdent), Table size/margin 모두 적용.
 
 ---
 

@@ -290,22 +290,23 @@ fn check_char_shape(
         }
     }
 
-    // Fontsize: spec is in points (e.g., 10). CharPr.height is 1/100 pt.
-    if let Some(expected_pt) = spec.fontsize {
-        let expected_height = (expected_pt * 100.0).round() as u32;
-        if char_pr.height != expected_height {
-            let v = violation_for(
-                ctx,
-                paragraph,
-                run,
-                jid::CHAR_SHAPE_FONTSIZE,
-                format!(
-                    "expected {} pt ({}), got {}",
-                    expected_pt, expected_height, char_pr.height
-                ),
-            );
-            if !ctx.push(v) {
-                return false;
+    // Fontsize: spec value is in points (e.g., 10 or {min:9, max:12}).
+    // CharPr.height is in 1/100 pt, so we compare the spec in points
+    // against (height / 100.0).
+    if let Some(r) = spec.fontsize.as_ref() {
+        if r.is_constrained() {
+            let actual_pt = char_pr.height as f64 / 100.0;
+            if !r.matches(actual_pt) {
+                let v = violation_for(
+                    ctx,
+                    paragraph,
+                    run,
+                    jid::CHAR_SHAPE_FONTSIZE,
+                    format!("fontsize {} pt outside spec {}", actual_pt, r.describe()),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
             }
         }
     }
@@ -372,14 +373,18 @@ fn check_char_shape(
         }
     }
 
-    if let Some(expected) = spec.ratio {
-        if (char_pr.ratio_hangul - expected).abs() > f64::EPSILON {
+    if let Some(r) = spec.ratio.as_ref() {
+        if r.is_constrained() && !r.matches(char_pr.ratio_hangul) {
             let v = violation_for(
                 ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_RATIO,
-                format!("expected ratio {}, got {}", expected, char_pr.ratio_hangul),
+                format!(
+                    "ratio {} outside spec {}",
+                    char_pr.ratio_hangul,
+                    r.describe()
+                ),
             );
             if !ctx.push(v) {
                 return false;
@@ -387,16 +392,17 @@ fn check_char_shape(
         }
     }
 
-    if let Some(expected) = spec.spacing {
-        if (char_pr.spacing_hangul - expected).abs() > f64::EPSILON {
+    if let Some(r) = spec.spacing.as_ref() {
+        if r.is_constrained() && !r.matches(char_pr.spacing_hangul) {
             let v = violation_for(
                 ctx,
                 paragraph,
                 run,
                 jid::CHAR_SHAPE_SPACING,
                 format!(
-                    "expected spacing {}, got {}",
-                    expected, char_pr.spacing_hangul
+                    "spacing {} outside spec {}",
+                    char_pr.spacing_hangul,
+                    r.describe()
                 ),
             );
             if !ctx.push(v) {
@@ -414,15 +420,16 @@ fn check_para_shape(
     para_pr: &ParaPr,
     spec: &ParaShape,
 ) -> bool {
-    if let Some(expected) = spec.linespacingvalue {
-        if (para_pr.line_spacing_value - expected).abs() > f64::EPSILON {
+    if let Some(r) = spec.linespacingvalue.as_ref() {
+        if r.is_constrained() && !r.matches(para_pr.line_spacing_value) {
             let v = para_violation(
                 ctx,
                 paragraph,
                 jid::PARA_SHAPE_LINESPACINGVALUE,
                 format!(
-                    "expected line spacing {}, got {}",
-                    expected, para_pr.line_spacing_value
+                    "line spacing {} outside spec {}",
+                    para_pr.line_spacing_value,
+                    r.describe()
                 ),
             );
             if !ctx.push(v) {
@@ -431,15 +438,16 @@ fn check_para_shape(
         }
     }
 
-    if let Some(expected) = spec.spacing_paraup {
-        if (para_pr.margin_prev - expected).abs() > f64::EPSILON {
+    if let Some(r) = spec.spacing_paraup.as_ref() {
+        if r.is_constrained() && !r.matches(para_pr.margin_prev) {
             let v = para_violation(
                 ctx,
                 paragraph,
                 jid::PARA_SHAPE_SPACING_PARAUP,
                 format!(
-                    "expected spacing-paraup {}, got {}",
-                    expected, para_pr.margin_prev
+                    "spacing-paraup {} outside spec {}",
+                    para_pr.margin_prev,
+                    r.describe()
                 ),
             );
             if !ctx.push(v) {
@@ -448,15 +456,16 @@ fn check_para_shape(
         }
     }
 
-    if let Some(expected) = spec.spacing_parabottom {
-        if (para_pr.margin_next - expected).abs() > f64::EPSILON {
+    if let Some(r) = spec.spacing_parabottom.as_ref() {
+        if r.is_constrained() && !r.matches(para_pr.margin_next) {
             let v = para_violation(
                 ctx,
                 paragraph,
                 jid::PARA_SHAPE_SPACING_PARABOTTOM,
                 format!(
-                    "expected spacing-parabottom {}, got {}",
-                    expected, para_pr.margin_next
+                    "spacing-parabottom {} outside spec {}",
+                    para_pr.margin_next,
+                    r.describe()
                 ),
             );
             if !ctx.push(v) {
@@ -465,15 +474,15 @@ fn check_para_shape(
         }
     }
 
-    if let Some(expected) = spec.indent {
+    if let Some(r) = spec.indent.as_ref() {
         // `indent` checks the first-line positive indent (margin_intent > 0).
         let actual = para_pr.margin_intent.max(0.0);
-        if (actual - expected).abs() > f64::EPSILON {
+        if r.is_constrained() && !r.matches(actual) {
             let v = para_violation(
                 ctx,
                 paragraph,
                 jid::PARA_SHAPE_INDENT,
-                format!("expected indent {}, got {}", expected, actual),
+                format!("indent {} outside spec {}", actual, r.describe()),
             );
             if !ctx.push(v) {
                 return false;
@@ -481,16 +490,16 @@ fn check_para_shape(
         }
     }
 
-    if let Some(expected) = spec.outdent {
+    if let Some(r) = spec.outdent.as_ref() {
         // `outdent` mirrors `indent` with a sign flip: negative margin_intent
         // counts as outdent magnitude.
         let actual = (-para_pr.margin_intent).max(0.0);
-        if (actual - expected).abs() > f64::EPSILON {
+        if r.is_constrained() && !r.matches(actual) {
             let v = para_violation(
                 ctx,
                 paragraph,
                 jid::PARA_SHAPE_OUTDENT,
-                format!("expected outdent {}, got {}", expected, actual),
+                format!("outdent {} outside spec {}", actual, r.describe()),
             );
             if !ctx.push(v) {
                 return false;
@@ -580,6 +589,107 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
         }
     }
 
+    if let Some(sz) = spec.size.as_ref() {
+        if let Some(r) = sz.width.as_ref() {
+            if r.is_constrained() && !r.matches(table.sz.width as f64) {
+                let v = table_violation(
+                    ctx,
+                    table,
+                    jid::TABLE_SIZE_WIDTH,
+                    format!(
+                        "table {} width {} outside spec {}",
+                        table.id,
+                        table.sz.width,
+                        r.describe()
+                    ),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+        if let Some(r) = sz.height.as_ref() {
+            if r.is_constrained() && !r.matches(table.sz.height as f64) {
+                let v = table_violation(
+                    ctx,
+                    table,
+                    jid::TABLE_SIZE_HEIGHT,
+                    format!(
+                        "table {} height {} outside spec {}",
+                        table.id,
+                        table.sz.height,
+                        r.describe()
+                    ),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    if let Some(Some(expected)) = spec.treat_as_char.map(Some) {
+        if table.pos.treat_as_char != expected {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_TREAT_AS_CHAR,
+                format!(
+                    "table {} treatAsChar {} != spec {}",
+                    table.id, table.pos.treat_as_char, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    // Margins use <hp:inMargin> for the inner/cell margin (upstream "margin")
+    // and <hp:outside> for the outer table margin.
+    if let Some(m) = spec.margin.as_ref() {
+        if !check_margin_side(
+            ctx,
+            table,
+            jid::TABLE_MARGIN_LEFT,
+            "margin.left",
+            m.left.as_ref(),
+            table.in_margin.left,
+        ) {
+            return false;
+        }
+        if !check_margin_side(
+            ctx,
+            table,
+            jid::TABLE_MARGIN_RIGHT,
+            "margin.right",
+            m.right.as_ref(),
+            table.in_margin.right,
+        ) {
+            return false;
+        }
+        if !check_margin_side(
+            ctx,
+            table,
+            jid::TABLE_MARGIN_TOP,
+            "margin.top",
+            m.top.as_ref(),
+            table.in_margin.top,
+        ) {
+            return false;
+        }
+        if !check_margin_side(
+            ctx,
+            table,
+            jid::TABLE_MARGIN_BOTTOM,
+            "margin.bottom",
+            m.bottom.as_ref(),
+            table.in_margin.bottom,
+        ) {
+            return false;
+        }
+    }
+
     if let Some(borders) = spec.border.as_ref() {
         let Some(bf) = ctx.doc.header.border_fill(table.border_fill_id_ref) else {
             return true; // Missing borderFill — nothing to compare.
@@ -594,6 +704,38 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
             if !check_border_side(ctx, table, position, side, rule) {
                 return false;
             }
+        }
+    }
+    true
+}
+
+fn check_margin_side(
+    ctx: &mut Ctx,
+    table: &Table,
+    code: ErrorCode,
+    label: &str,
+    rule: Option<&crate::rules::schema::Range64>,
+    actual: i64,
+) -> bool {
+    let Some(r) = rule else { return true };
+    if !r.is_constrained() {
+        return true;
+    }
+    if !r.matches(actual as f64) {
+        let v = table_violation(
+            ctx,
+            table,
+            code,
+            format!(
+                "table {} {} = {} outside spec {}",
+                table.id,
+                label,
+                actual,
+                r.describe()
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
         }
     }
     true
@@ -1150,6 +1292,7 @@ mod tests {
                     row_cnt: 1,
                     col_cnt: 1,
                     nesting_depth: 0,
+                    ..Table::default()
                 }],
             }],
         };
