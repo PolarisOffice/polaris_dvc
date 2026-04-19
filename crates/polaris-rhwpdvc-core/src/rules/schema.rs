@@ -266,6 +266,19 @@ pub struct CharShape {
     pub italic: Option<bool>,
     pub underline: Option<bool>,
     pub strikeout: Option<bool>,
+    /// Presence-of-`<hh:outline/>` (글자 윤곽선). Upstream
+    /// `JID_CHAR_SHAPE_OUTLINE` (1013).
+    pub outline: Option<bool>,
+    /// Presence-of-`<hh:emboss/>` (양각). Upstream `JID_CHAR_SHAPE_EMBOSS` (1014).
+    pub emboss: Option<bool>,
+    /// Presence-of-`<hh:engrave/>` (음각). Upstream `JID_CHAR_SHAPE_ENGRAVE` (1015).
+    pub engrave: Option<bool>,
+    /// Presence-of-`<hh:shadow …/>` (그림자). Upstream `JID_CHAR_SHAPE_SHADOW` (1016).
+    pub shadow: Option<bool>,
+    /// Presence-of-`<hh:supscript/>` (윗첨자). Upstream `JID_CHAR_SHAPE_SUPSCRIPT` (1017).
+    pub supscript: Option<bool>,
+    /// Presence-of-`<hh:subscript/>` (아래첨자). Upstream `JID_CHAR_SHAPE_SUBSCRIPT` (1018).
+    pub subscript: Option<bool>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

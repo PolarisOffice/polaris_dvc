@@ -98,8 +98,12 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                         }
                     }
                     "outline" => {
+                        // `<hh:outline type="NONE"/>` means outline OFF in OWPML;
+                        // any other type (SOLID/DOTTED/…) means ON. Matches
+                        // upstream `charPrInfo.outline` semantics.
                         if let Some(c) = cur_char.as_mut() {
-                            c.outline = true;
+                            let t = attr(&attrs, "type").unwrap_or_default();
+                            c.outline = !t.is_empty() && !t.eq_ignore_ascii_case("NONE");
                         }
                     }
                     "emboss" => {
@@ -123,30 +127,47 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                         }
                     }
                     "underline" if cur_char.is_some() => {
+                        // `type="NONE"` means no underline; any other
+                        // (BOTTOM/CENTER/TOP/…) means underlined. Matches
+                        // upstream `charPrInfo.underline` boolean semantics.
                         if let Some(c) = cur_char.as_mut() {
-                            c.underline = Some(Underline {
-                                kind: attr(&attrs, "type").unwrap_or_default(),
-                                shape: attr(&attrs, "shape").unwrap_or_default(),
-                                color: attr(&attrs, "color").unwrap_or_default(),
-                            });
+                            let t = attr(&attrs, "type").unwrap_or_default();
+                            if !t.is_empty() && !t.eq_ignore_ascii_case("NONE") {
+                                c.underline = Some(Underline {
+                                    kind: t,
+                                    shape: attr(&attrs, "shape").unwrap_or_default(),
+                                    color: attr(&attrs, "color").unwrap_or_default(),
+                                });
+                            }
                         }
                     }
                     "strikeout" if cur_char.is_some() => {
+                        // `shape="NONE"` means no strikeout.
                         if let Some(c) = cur_char.as_mut() {
-                            c.strikeout = Some(Strikeout {
-                                shape: attr(&attrs, "shape").unwrap_or_default(),
-                                color: attr(&attrs, "color").unwrap_or_default(),
-                            });
+                            let sh = attr(&attrs, "shape").unwrap_or_default();
+                            if !sh.is_empty() && !sh.eq_ignore_ascii_case("NONE") {
+                                c.strikeout = Some(Strikeout {
+                                    shape: sh,
+                                    color: attr(&attrs, "color").unwrap_or_default(),
+                                });
+                            }
                         }
                     }
                     "shadow" if cur_char.is_some() => {
+                        // `<hh:shadow type="NONE" .../>` — no shadow (stays
+                        // `None`); any other type leaves the full Shadow
+                        // struct populated. Matches upstream
+                        // `charPrInfo.shadow` boolean semantics.
                         if let Some(c) = cur_char.as_mut() {
-                            c.shadow = Some(Shadow {
-                                kind: attr(&attrs, "type").unwrap_or_default(),
-                                color: attr(&attrs, "color").unwrap_or_default(),
-                                offset_x: attr_i32(&attrs, "offsetX").unwrap_or(0),
-                                offset_y: attr_i32(&attrs, "offsetY").unwrap_or(0),
-                            });
+                            let t = attr(&attrs, "type").unwrap_or_default();
+                            if !t.is_empty() && !t.eq_ignore_ascii_case("NONE") {
+                                c.shadow = Some(Shadow {
+                                    kind: t,
+                                    color: attr(&attrs, "color").unwrap_or_default(),
+                                    offset_x: attr_i32(&attrs, "offsetX").unwrap_or(0),
+                                    offset_y: attr_i32(&attrs, "offsetY").unwrap_or(0),
+                                });
+                            }
                         }
                     }
                     "paraPr" => {

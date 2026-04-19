@@ -123,6 +123,14 @@ pub struct FixCharPr {
     pub ratio: f64,
     /// `<hh:spacing hangul="…">` (HWPUNIT). Default: 0.
     pub spacing: f64,
+    /// `<hh:outline type="SOLID"/>` when true; `"NONE"` when false.
+    pub outline: bool,
+    pub emboss: bool,
+    pub engrave: bool,
+    /// `<hh:shadow type="CONTINUOUS" …/>` when true; `"NONE"` when false.
+    pub shadow: bool,
+    pub supscript: bool,
+    pub subscript: bool,
 }
 
 impl Default for FixCharPr {
@@ -134,6 +142,12 @@ impl Default for FixCharPr {
             italic: false,
             ratio: 100.0,
             spacing: 0.0,
+            outline: false,
+            emboss: false,
+            engrave: false,
+            shadow: false,
+            supscript: false,
+            subscript: false,
         }
     }
 }
@@ -388,12 +402,33 @@ impl Fixture {
             }
             s.push_str(
                 "<hh:underline type=\"NONE\" shape=\"SOLID\" color=\"#000000\"/>\
-                 <hh:strikeout shape=\"NONE\" color=\"#000000\"/>\
-                 <hh:outline type=\"NONE\"/>\
-                 <hh:shadow type=\"NONE\" color=\"#C0C0C0\" offsetX=\"10\" \
-                 offsetY=\"10\"/>\
-                 </hh:charPr>",
+                 <hh:strikeout shape=\"NONE\" color=\"#000000\"/>",
             );
+            // Outline: `type="NONE"` = OFF, "SOLID" = ON. Parser uses the
+            // same truthiness upstream's `charPrInfo.outline` does.
+            s.push_str(&format!(
+                "<hh:outline type=\"{}\"/>",
+                if c.outline { "SOLID" } else { "NONE" }
+            ));
+            // Shadow: `type="NONE"` = OFF, "CONTINUOUS" = ON.
+            s.push_str(&format!(
+                "<hh:shadow type=\"{}\" color=\"#C0C0C0\" offsetX=\"10\" offsetY=\"10\"/>",
+                if c.shadow { "CONTINUOUS" } else { "NONE" }
+            ));
+            // Self-closing flag decorations: omitted when false.
+            if c.emboss {
+                s.push_str("<hh:emboss/>");
+            }
+            if c.engrave {
+                s.push_str("<hh:engrave/>");
+            }
+            if c.supscript {
+                s.push_str("<hh:supscript/>");
+            }
+            if c.subscript {
+                s.push_str("<hh:subscript/>");
+            }
+            s.push_str("</hh:charPr>");
         }
         s.push_str("</hh:charProperties>");
         // paraProperties

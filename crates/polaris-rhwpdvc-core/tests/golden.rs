@@ -513,6 +513,37 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // CharShape decoration parity: fixture emboss=true, spec
+            // emboss=false → JID 1014 fires. Mirrors upstream's
+            // `charshape->getEmboss() != charPr->charPrInfo.emboss`.
+            name: "27_charshape_emboss_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].emboss = true;
+                f
+            },
+            spec: r#"{
+  "charshape": { "emboss": false }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Shadow decoration: fixture shadow=true (type="CONTINUOUS"),
+            // spec shadow=false → JID 1016 fires.
+            name: "28_charshape_shadow_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].shadow = true;
+                f
+            },
+            spec: r#"{
+  "charshape": { "shadow": false }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Same fixture + spec as 24_table_bgfill_type_mismatch, but
             // the DvcStrict profile filters out JIDs upstream leaves as
             // no-op. bgfill-type is one of those, so expected.json is [].

@@ -422,6 +422,64 @@ fn check_char_shape(
         }
     }
 
+    // Presence-of-element decorations (OUTLINE/EMBOSS/ENGRAVE/SHADOW/
+    // SUPSCRIPT/SUBSCRIPT). Upstream `Checker.cpp` compares
+    // `charshape->getX() != charPr->charPrInfo.x`, which we mirror here
+    // via boolean-expected vs boolean-actual.
+    for (spec_field, actual, code, label) in [
+        (
+            spec.outline,
+            char_pr.outline,
+            jid::CHAR_SHAPE_OUTLINE,
+            "outline",
+        ),
+        (
+            spec.emboss,
+            char_pr.emboss,
+            jid::CHAR_SHAPE_EMBOSS,
+            "emboss",
+        ),
+        (
+            spec.engrave,
+            char_pr.engrave,
+            jid::CHAR_SHAPE_ENGRAVE,
+            "engrave",
+        ),
+        (
+            spec.shadow,
+            char_pr.shadow.is_some(),
+            jid::CHAR_SHAPE_SHADOW,
+            "shadow",
+        ),
+        (
+            spec.supscript,
+            char_pr.supscript,
+            jid::CHAR_SHAPE_SUPSCRIPT,
+            "supscript",
+        ),
+        (
+            spec.subscript,
+            char_pr.subscript,
+            jid::CHAR_SHAPE_SUBSCRIPT,
+            "subscript",
+        ),
+    ] {
+        if let Some(expected) = spec_field {
+            if actual != expected {
+                let v = violation_for(
+                    ctx,
+                    paragraph,
+                    run,
+                    code,
+                    format!("expected {}={}, got {}", label, expected, actual),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+    }
+
     if let Some(r) = spec.ratio.as_ref() {
         if r.is_constrained() && !r.matches(char_pr.ratio_hangul) {
             let v = violation_for(
