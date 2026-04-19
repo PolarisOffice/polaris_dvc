@@ -85,6 +85,29 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Disable precompiled headers in upstream vcxproj files
+        shell: bash
+        # v141 (VS2017) auto-recognized `stdafx.h`/`stdafx.cpp` as the
+        # default PCH source/header; v143 (VS2022) changed the default
+        # to `pch.h`/`pch.cpp`. Upstream's OWPMLUtil.vcxproj leans on
+        # the old convention, so compiles fail with C1010 "unexpected
+        # end of file while looking for precompiled header" when we
+        # retarget to v143. Rewriting every `<PrecompiledHeader>Use`
+        # to `NotUsing` sidesteps the whole PCH path — v143 just does
+        # plain compiles with a modest build-time hit.
+        run: |
+          set -euo pipefail
+          cd dvc
+          find . -name '*.vcxproj' -print0 | while IFS= read -r -d '' p; do
+              if grep -q 'PrecompiledHeader' "$p"; then
+                  sed -i \
+                    -e 's|<PrecompiledHeader>Use</PrecompiledHeader>|<PrecompiledHeader>NotUsing</PrecompiledHeader>|g' \
+                    -e 's|<PrecompiledHeader>Create</PrecompiledHeader>|<PrecompiledHeader>NotUsing</PrecompiledHeader>|g' \
+                    "$p"
+                  echo "patched: $p"
+              fi
+          done
+
       - name: Detect installed Windows SDK
         id: sdk
         shell: pwsh
