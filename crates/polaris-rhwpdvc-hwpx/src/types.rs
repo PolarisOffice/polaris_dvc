@@ -181,6 +181,12 @@ pub struct CharPr {
     pub ratio_hangul: f64,
     /// `<hh:spacing hangul="…">` — extra inter-character spacing.
     pub spacing_hangul: f64,
+    /// `<hh:relSz hangul="…">` — relative size (percent). Upstream compares
+    /// this against `charshape.r-size` (`JID_CHAR_SHAPE_RSIZE`).
+    pub rel_sz_hangul: f64,
+    /// `useKerning="0|1"` attribute on `<hh:charPr>`. Upstream compares
+    /// this against `charshape.kerning` (`JID_CHAR_SHAPE_KERNING`).
+    pub use_kerning: bool,
     pub bold: bool,
     pub italic: bool,
     pub underline: Option<Underline>,

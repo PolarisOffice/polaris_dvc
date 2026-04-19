@@ -60,6 +60,8 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                             id: attr_u32(&attrs, "id").unwrap_or(0),
                             height: attr_u32(&attrs, "height").unwrap_or(0),
                             text_color: attr(&attrs, "textColor").unwrap_or_default(),
+                            // `useKerning="1"` → kerning on.
+                            use_kerning: attr_u32(&attrs, "useKerning").unwrap_or(0) != 0,
                             ..CharPr::default()
                         });
                     }
@@ -85,6 +87,11 @@ pub fn parse_header(xml: &str) -> Result<Header, HwpxError> {
                     "spacing" if cur_char.is_some() => {
                         if let Some(c) = cur_char.as_mut() {
                             c.spacing_hangul = attr_f64(&attrs, "hangul").unwrap_or(0.0);
+                        }
+                    }
+                    "relSz" if cur_char.is_some() => {
+                        if let Some(c) = cur_char.as_mut() {
+                            c.rel_sz_hangul = attr_f64(&attrs, "hangul").unwrap_or(0.0);
                         }
                     }
                     "bold" => {

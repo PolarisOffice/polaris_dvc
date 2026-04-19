@@ -123,6 +123,10 @@ pub struct FixCharPr {
     pub ratio: f64,
     /// `<hh:spacing hangul="…">` (HWPUNIT). Default: 0.
     pub spacing: f64,
+    /// `<hh:relSz hangul="…">` (percent). Default: 100.
+    pub rel_sz: f64,
+    /// `useKerning="0|1"` attribute on `<hh:charPr>`. Default: false.
+    pub kerning: bool,
     /// `<hh:outline type="SOLID"/>` when true; `"NONE"` when false.
     pub outline: bool,
     pub emboss: bool,
@@ -149,6 +153,8 @@ impl Default for FixCharPr {
             italic: false,
             ratio: 100.0,
             spacing: 0.0,
+            rel_sz: 100.0,
+            kerning: false,
             outline: false,
             emboss: false,
             engrave: false,
@@ -388,7 +394,7 @@ impl Fixture {
         for c in &self.char_prs {
             s.push_str(&format!(
                 "<hh:charPr id=\"{}\" height=\"{}\" textColor=\"#000000\" \
-                 shadeColor=\"none\" useFontSpace=\"0\" useKerning=\"0\" \
+                 shadeColor=\"none\" useFontSpace=\"0\" useKerning=\"{k}\" \
                  symMark=\"NONE\" borderFillIDRef=\"1\">\
                  <hh:fontRef hangul=\"0\" latin=\"0\" hanja=\"0\" japanese=\"0\" \
                  other=\"0\" symbol=\"0\" user=\"0\"/>\
@@ -396,14 +402,16 @@ impl Fixture {
                  japanese=\"{r}\" other=\"{r}\" symbol=\"{r}\" user=\"{r}\"/>\
                  <hh:spacing hangul=\"{sp}\" latin=\"{sp}\" hanja=\"{sp}\" \
                  japanese=\"{sp}\" other=\"{sp}\" symbol=\"{sp}\" user=\"{sp}\"/>\
-                 <hh:relSz hangul=\"100\" latin=\"100\" hanja=\"100\" \
-                 japanese=\"100\" other=\"100\" symbol=\"100\" user=\"100\"/>\
+                 <hh:relSz hangul=\"{rz}\" latin=\"{rz}\" hanja=\"{rz}\" \
+                 japanese=\"{rz}\" other=\"{rz}\" symbol=\"{rz}\" user=\"{rz}\"/>\
                  <hh:offset hangul=\"0\" latin=\"0\" hanja=\"0\" japanese=\"0\" \
                  other=\"0\" symbol=\"0\" user=\"0\"/>",
                 c.id,
                 c.height,
                 r = c.ratio,
                 sp = c.spacing,
+                rz = c.rel_sz,
+                k = if c.kerning { 1 } else { 0 },
             ));
             if c.bold {
                 s.push_str("<hh:bold/>");

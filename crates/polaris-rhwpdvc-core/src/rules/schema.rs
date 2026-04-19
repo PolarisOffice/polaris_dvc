@@ -294,6 +294,13 @@ pub struct CharShape {
     /// Shadow color. Upstream `JID_CHAR_SHAPE_SHADOW_COLOR` (1022).
     #[serde(rename = "shadow-color")]
     pub shadow_color: Option<ColorValue>,
+    /// Relative size (`<hh:relSz hangul="…">`). Upstream
+    /// `JID_CHAR_SHAPE_RSIZE` (1005). Accepts scalar or `{min,max}`.
+    #[serde(rename = "r-size")]
+    pub r_size: Option<Range64>,
+    /// Kerning boolean (`useKerning="0|1"`). Upstream
+    /// `JID_CHAR_SHAPE_KERNING` (1031).
+    pub kerning: Option<bool>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

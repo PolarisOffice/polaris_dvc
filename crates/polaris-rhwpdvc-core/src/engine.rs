@@ -588,6 +588,42 @@ fn check_char_shape(
         }
     }
 
+    // r-size (<hh:relSz hangul=…>). Upstream JID_CHAR_SHAPE_RSIZE.
+    if let Some(r) = spec.r_size.as_ref() {
+        if r.is_constrained() && !r.matches(char_pr.rel_sz_hangul) {
+            let v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::CHAR_SHAPE_RSIZE,
+                format!(
+                    "r-size {} outside spec {}",
+                    char_pr.rel_sz_hangul,
+                    r.describe()
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    // kerning (useKerning="0|1"). Upstream JID_CHAR_SHAPE_KERNING.
+    if let Some(expected) = spec.kerning {
+        if char_pr.use_kerning != expected {
+            let v = violation_for(
+                ctx,
+                paragraph,
+                run,
+                jid::CHAR_SHAPE_KERNING,
+                format!("expected kerning={}, got {}", expected, char_pr.use_kerning),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
     true
 }
 

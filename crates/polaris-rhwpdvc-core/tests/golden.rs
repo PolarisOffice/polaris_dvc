@@ -590,6 +590,34 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // Relative size: fixture rel_sz=120 vs spec r-size=100 → 1005.
+            name: "32_charshape_rsize_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].rel_sz = 120.0;
+                f
+            },
+            spec: r#"{
+  "charshape": { "r-size": 100 }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Kerning: fixture useKerning=1 vs spec kerning=false → 1031.
+            name: "33_charshape_kerning_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].kerning = true;
+                f
+            },
+            spec: r#"{
+  "charshape": { "kerning": false }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Same fixture + spec as 24_table_bgfill_type_mismatch, but
             // the DvcStrict profile filters out JIDs upstream leaves as
             // no-op. bgfill-type is one of those, so expected.json is [].
