@@ -67,10 +67,24 @@ pub struct RuleSpec {
     pub charshape: Option<CharShape>,
     pub parashape: Option<ParaShape>,
     pub table: Option<TableSpec>,
+    pub specialcharacter: Option<SpecialCharacter>,
     pub style: Option<Permission>,
     pub hyperlink: Option<Permission>,
     #[serde(rename = "macro")]
     pub macro_: Option<Permission>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// `specialcharacter` rule — run text code points must fall within
+/// `[minimum, maximum]` inclusive. Characters below `minimum` fire
+/// `JID_SPECIALCHARACTER_MINIMUM` (3101); above `maximum` fires
+/// `JID_SPECIALCHARACTER_MAXIMUM` (3102).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "lowercase")]
+pub struct SpecialCharacter {
+    pub minimum: Option<u32>,
+    pub maximum: Option<u32>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

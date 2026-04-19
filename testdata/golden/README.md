@@ -34,3 +34,4 @@ Current cases:
 | `12_lone_table_with_table_in_table_rule` | single top-level table + spec `table-in-table:false` → empty array (regression anchor) |
 | `13_charshape_ratio_mismatch` | charPr ratio 90 vs spec `ratio:100` → `ErrorCode: 1007` |
 | `14_parashape_indent_mismatch` | paraPr margin-intent 500 vs spec `indent:0` → `ErrorCode: 2005` |
+| `15_specialcharacter_below_minimum` | run text contains TAB (U+0009) vs spec `minimum:32` → `ErrorCode: 3101` |

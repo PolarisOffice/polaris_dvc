@@ -225,6 +225,20 @@ fn cases() -> Vec<Case> {
 "#,
         },
         Case {
+            name: "15_specialcharacter_below_minimum",
+            build: || {
+                let mut f = Fixture::baseline();
+                // Replace the run text with one containing a TAB (U+0009),
+                // which is below the spec minimum of U+0020.
+                f.paragraphs[0].runs[0].text = "A\tB".into();
+                f
+            },
+            spec: r#"{
+  "specialcharacter": { "minimum": 32, "maximum": 1048575 }
+}
+"#,
+        },
+        Case {
             name: "13_charshape_ratio_mismatch",
             build: || {
                 let mut f = Fixture::baseline();

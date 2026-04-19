@@ -24,7 +24,9 @@
 use crate::error_codes::{jid, ErrorCode};
 use crate::output::ViolationRecord;
 use crate::report::Report;
-use crate::rules::schema::{BorderRule, CharShape, ParaShape, RuleSpec, TableSpec};
+use crate::rules::schema::{
+    BorderRule, CharShape, ParaShape, RuleSpec, SpecialCharacter, TableSpec,
+};
 
 use polaris_hwpx::{Border, BorderFill, CharPr, HwpxDocument, ParaPr, Paragraph, Run, Table};
 
@@ -184,6 +186,12 @@ fn check_paragraph(ctx: &mut Ctx, paragraph: &Paragraph, spec: &RuleSpec) -> boo
                 if !check_char_shape(ctx, paragraph, run, char_pr, char_spec) {
                     return false;
                 }
+            }
+        }
+
+        if let Some(sc) = spec.specialcharacter.as_ref() {
+            if !check_special_character(ctx, paragraph, run, sc) {
+                return false;
             }
         }
 
@@ -642,6 +650,69 @@ fn table_violation(
         error_string: diagnostic,
         ..ViolationRecord::new(code)
     }
+}
+
+fn check_special_character(
+    ctx: &mut Ctx,
+    paragraph: &Paragraph,
+    run: &Run,
+    spec: &SpecialCharacter,
+) -> bool {
+    // Scan each Unicode scalar in the run's text. Reports at most one
+    // violation per bound per run — the first offending code point wins.
+    // This matches upstream behavior where `errorText` is the offending
+    // run's text rather than the individual character.
+    let mut below: Option<u32> = None;
+    let mut above: Option<u32> = None;
+    for ch in run.text.chars() {
+        let cp = ch as u32;
+        if let Some(min) = spec.minimum {
+            if cp < min && below.is_none() {
+                below = Some(cp);
+            }
+        }
+        if let Some(max) = spec.maximum {
+            if cp > max && above.is_none() {
+                above = Some(cp);
+            }
+        }
+        if below.is_some() && above.is_some() {
+            break;
+        }
+    }
+    if let Some(cp) = below {
+        let v = violation_for(
+            ctx,
+            paragraph,
+            run,
+            jid::SPECIAL_CHAR_MINIMUM,
+            format!(
+                "code point U+{:04X} below minimum U+{:04X}",
+                cp,
+                spec.minimum.unwrap()
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    if let Some(cp) = above {
+        let v = violation_for(
+            ctx,
+            paragraph,
+            run,
+            jid::SPECIAL_CHAR_MAXIMUM,
+            format!(
+                "code point U+{:04X} above maximum U+{:04X}",
+                cp,
+                spec.maximum.unwrap()
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Paragraph-level violation (no specific run). Stamps the current

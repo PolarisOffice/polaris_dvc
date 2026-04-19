@@ -1,0 +1,3 @@
+{
+  "specialcharacter": { "minimum": 32, "maximum": 1048575 }
+}

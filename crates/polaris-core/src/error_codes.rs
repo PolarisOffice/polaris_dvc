@@ -48,6 +48,8 @@ impl ErrorCode {
             2008 => "Line spacing value does not match specification",
             2009 => "Paragraph top spacing does not match specification",
             2010 => "Paragraph bottom spacing does not match specification",
+            3101 => "Character code point below specification minimum",
+            3102 => "Character code point above specification maximum",
             3502 => "Style usage is not permitted",
             6901 => "Hyperlink usage is not permitted",
             7001 => "Macro usage is not permitted",
@@ -87,6 +89,8 @@ pub mod jid {
     pub const TABLE_BORDER_COLOR: ErrorCode = ErrorCode::new(3035);
     pub const TABLE_TREAT_AS_CHAR: ErrorCode = ErrorCode::new(3004);
     pub const TABLE_IN_TABLE: ErrorCode = ErrorCode::new(3056);
+    pub const SPECIAL_CHAR_MINIMUM: ErrorCode = ErrorCode::new(3101);
+    pub const SPECIAL_CHAR_MAXIMUM: ErrorCode = ErrorCode::new(3102);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
