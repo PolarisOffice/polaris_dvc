@@ -54,6 +54,23 @@ wasm-pack build crates/polaris-wasm --target nodejs
 - [docs/golden-tests.md](docs/golden-tests.md) — DVC parity 회귀 테스트 운영 방법
 - [docs/jid-registry.md](docs/jid-registry.md) — JID 전체 레지스트리 재생성 및 엔진 확장 가이드
 
+## 원격 푸시
+
+GitHub Personal Access Token을 `.env.local`에 넣고 헬퍼 스크립트로 푸시한다.
+
+```sh
+cp .env.local.example .env.local
+# .env.local 을 열어 GITHUB_PAT 에 값 입력 (repo 스코프 또는
+# Contents: Read and write 권한)
+
+./scripts/push.sh              # 현재 브랜치 푸시
+./scripts/push.sh -u main      # 최초에 upstream 지정
+```
+
+스크립트는 PAT를 `git credential.helper`의 stdout으로 한 번만 흘려보내고,
+`.git/config`·쉘 히스토리·프로세스 argv 어디에도 기록하지 않는다.
+`.env.local` 자체는 `.gitignore` 처리되어 절대 커밋되지 않는다.
+
 ## 라이선스
 
 Apache-2.0. 업스트림 DVC 저작권 귀속은 `NOTICE` 참고.

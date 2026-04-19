@@ -8,3 +8,9 @@ Cargo.lock.bak
 /.vscode
 /.idea
 *.wasm
+
+# Local env files. Secrets like GITHUB_PAT live in `.env.local`;
+# only `.env.local.example` is committed as a template.
+.env
+.env.*
+!.env.local.example
