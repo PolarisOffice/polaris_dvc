@@ -1232,11 +1232,14 @@ fn check_bullets(ctx: &mut Ctx, spec: &BulletSpec) -> bool {
     };
     for bullet in &ctx.doc.header.bullets {
         // A bullet's `char` may be an empty string (no-op bullet). Skip it.
-        if bullet.char_.is_empty() {
+        let Some(first) = bullet.char_.chars().next() else {
             continue;
-        }
-        let ok = bullet.char_.chars().all(|ch| allowed.contains(ch));
-        if !ok {
+        };
+        // Upstream `CheckBulletToCheckList` compares `bullet->bulletChar[0]`
+        // against the allowed set — first character only. Prior versions
+        // of this engine compared every char of `bullet.char_`, which
+        // diverged from DVC.exe for multi-character bullet strings.
+        if !allowed.contains(first) {
             let v = ViolationRecord {
                 page_no: ctx.page_no.max(1),
                 line_no: ctx.line_no,
@@ -1252,6 +1255,13 @@ fn check_bullets(ctx: &mut Ctx, spec: &BulletSpec) -> bool {
             }
         }
     }
+    // NOTE (parity): upstream only checks bullets **referenced** from
+    // `ParaBullet`-heading paragraphs, while we iterate every declared
+    // bullet in the header regardless of usage. For typical HWPX
+    // documents these yield identical output (unused bullets almost
+    // never have disallowed chars), but for strict byte parity this
+    // should be narrowed to paragraph-referenced bullets only. Tracked
+    // in docs/parity-roadmap.md.
     true
 }
 
