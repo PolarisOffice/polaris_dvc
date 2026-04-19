@@ -1,0 +1,21 @@
+[package]
+name = "polaris-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "DVC-compatible CLI frontend for the polaris HWPX validator."
+
+[[bin]]
+name = "polaris"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+polaris-core = { workspace = true }
+polaris-hwpx = { workspace = true }
+polaris-format = { workspace = true }

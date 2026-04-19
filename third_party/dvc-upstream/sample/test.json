@@ -1,0 +1,190 @@
+{    
+    "charshape" : 
+    {
+        "langtype" : "대표",
+        "font" : ["바탕", "바탕체", "돋움", "돋움체", "굴림", "굴림체", "궁서", "궁서체", "맑은 고딕"],
+        
+        "ratio" : 100,
+        "spacing" : 0
+    },    
+    
+    "parashape" : 
+    {
+        "spacing-paraup" : 0,
+        "spacing-parabottom" : 0,
+        "linespacing" : 0,
+        "linespacingvalue" : 160,
+        "indent" : 0,
+        "outdent" : 0
+    },
+    
+    "table" : 
+    {        
+        "border" : 
+        [
+            {
+                "position" : 1,    
+                "bordertype" : 1,
+                "size" : 0.12,
+                "color" : 0
+            },
+            {
+                "position" : 2,    
+                "bordertype" : 1,
+                "size" : 0.12,
+                "color" : 0
+            },
+            {
+                "position" : 3,    
+                "bordertype" : 1,
+                "size" : 0.12,
+                "color" : 0
+            },
+            {
+                "position" : 4,    
+                "bordertype" : 1,
+                "size" : 0.12,
+                "color" : 0
+            }
+        ],
+        "treatAsChar" : true,
+        "table-in-table" : false
+    },
+    
+    "specialcharacter" :
+    {
+        "minimum": 32,        
+        "maximum": 1048575    
+    },
+    
+    "outlineshape" : 
+    {            
+        "leveltype" : 
+        [
+            {
+                "level" : 1,
+                "numbertype" : "^1.",
+                "numbershape" : 0
+            },
+            {
+                "level" : 2,
+                "numbertype" : "^2.",
+                "numbershape" : 8
+            },
+            {
+                "level" : 3,
+                "numbertype" : "^3)",
+                "numbershape" : 0
+            },
+            {
+                "level" : 4,
+                "numbertype" : "^4)",
+                "numbershape" : 8
+            },
+            {
+                "level" : 5,
+                "numbertype" : "(^5)",
+                "numbershape" : 0
+            },
+            {
+                "level" : 6,
+                "numbertype" : "(^6)",
+                "numbershape" : 8
+            },
+            {
+                "level" : 7,
+                "numbertype" : "^7",
+                "numbershape" : 1
+            },
+            {
+                "level" : 8,
+                "numbertype" : "^8",
+                "numbershape" : 9
+            },
+            {
+                "level" : 9,                
+                "numbershape" : 0
+            },
+            {
+                "level" : 10,                
+                "numbershape" : 0
+            }            
+        ]
+    },
+    
+    "bullet" : 
+    {
+        "bulletshapes" : "□○-•*"
+    },
+    
+    "paranumbullet" : 
+    {            
+        "leveltype" : 
+        [
+            {
+                "level" : 1,
+                "numbertype" : "^1.",
+                "numbershape" : 0
+            },
+            {
+                "level" : 2,
+                "numbertype" : "^2.",
+                "numbershape" : 8
+            },
+            {
+                "level" : 3,
+                "numbertype" : "^3)",
+                "numbershape" : 0
+            },
+            {
+                "level" : 4,
+                "numbertype" : "^4)",
+                "numbershape" : 8
+            },
+            {
+                "level" : 5,
+                "numbertype" : "(^5)",
+                "numbershape" : 0
+            },
+            {
+                "level" : 6,
+                "numbertype" : "(^6)",
+                "numbershape" : 8
+            },
+            {
+                "level" : 7,
+                "numbertype" : "^7",
+                "numbershape" : 1
+            },
+            {
+                "level" : 8,
+                "numbertype" : "^8",
+                "numbershape" : 9
+            },
+            {
+                "level" : 9,                
+                "numbershape" : 0
+            },
+            {
+                "level" : 10,                
+                "numbershape" : 0
+            }            
+        ]
+    },
+    
+    "style" :
+    {
+        "permission" : false
+    },
+
+    "hyperlink": 
+    {
+        "permission" : false
+    },
+
+    "macro": 
+    {
+        "permission" : false
+    }
+}
+

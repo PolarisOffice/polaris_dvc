@@ -1,0 +1,11 @@
+{
+  "charshape": {
+    "font": "바탕",
+    "fontsize": 10,
+    "bold": false,
+    "italic": false
+  },
+  "parashape": {
+    "linespacingvalue": 160
+  }
+}

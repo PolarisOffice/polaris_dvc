@@ -1,0 +1,17 @@
+polaris_rhwpdvc
+Copyright 2026 Polaris RHWPDVC Contributors
+
+This product is a Rust re-implementation inspired by:
+
+  DVC (HWPX Document Validation Checker)
+  Copyright (c) 2022 Hancom Inc.
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/hancom-io/dvc
+
+Rule JSON schema, JID (error-code) constants, and the output JSON field
+layout are designed to remain compatible with the upstream DVC project so
+existing DVC assets (rule files, tooling) can be reused unchanged.
+
+A snapshot of the upstream DVC source used for reference is retained in
+`third_party/dvc-upstream/` for traceability. No compiled code from that
+snapshot is distributed as part of this project.

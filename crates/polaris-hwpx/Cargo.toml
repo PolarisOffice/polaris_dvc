@@ -1,0 +1,15 @@
+[package]
+name = "polaris-hwpx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Pure-Rust HWPX (OWPML) parser. Byte-input API suitable for WASM."
+
+[dependencies]
+zip = { workspace = true }
+quick-xml = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }

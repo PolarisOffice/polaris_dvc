@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/polaris-core",
+    "crates/polaris-hwpx",
+    "crates/polaris-format",
+    "crates/polaris-cli",
+    "crates/polaris-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "Apache-2.0"
+repository = "https://github.com/miles-hs-lee/polaris_rhwpdvc"
+authors = ["Polaris RHWPDVC Contributors"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "1"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.31", features = ["serialize"] }
+clap = { version = "4", features = ["derive"] }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+getrandom = { version = "0.2", features = ["js"] }
+
+polaris-core = { path = "crates/polaris-core", version = "0.1.0" }
+polaris-hwpx = { path = "crates/polaris-hwpx", version = "0.1.0" }
+polaris-format = { path = "crates/polaris-format", version = "0.1.0" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
