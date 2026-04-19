@@ -105,7 +105,8 @@ fn main() -> ExitCode {
     };
     let report = polaris_core::engine::validate(&doc, &spec, &opts);
 
-    let json = serde_json::to_string_pretty(&report).expect("serialize report");
+    let payload = report.to_json_value(polaris_core::output::OutputOption::AllOption);
+    let json = serde_json::to_string_pretty(&payload).expect("serialize report");
     if let Some(path) = cli.file {
         if let Err(e) = std::fs::write(&path, json.as_bytes()) {
             eprintln!("polaris: failed to write output: {e}");
