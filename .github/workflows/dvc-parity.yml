@@ -105,23 +105,34 @@ jobs:
           done
 
       - name: Install jsoncpp via vcpkg (x86-windows)
+        id: jsoncpp
         shell: pwsh
-        # Upstream's Release|Win32 config looks for jsoncpp at
-        # `./opensource/vcpkg/packages/jsoncpp_x86-windows/...`. We
-        # don't vendor vcpkg, so use the windows-latest-preinstalled
-        # vcpkg to install jsoncpp, then symlink/copy the install tree
-        # into the expected `dvc/opensource/vcpkg/...` layout.
+        # Upstream's Release|Win32 config expects jsoncpp under
+        # `./opensource/vcpkg/packages/jsoncpp_x86-windows/...`. Rather
+        # than replicate that exact tree (Copy-Item's dir semantics
+        # are easy to get wrong), install via vcpkg and expose the
+        # resulting include/lib directories to a later step through
+        # GITHUB_OUTPUT. The Build step then prepends them to the
+        # `INCLUDE` / `LIB` environment variables that cl.exe and
+        # link.exe consult, sidestepping the vcxproj's stale relative
+        # paths entirely.
         run: |
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if (-not $vcpkgRoot) { $vcpkgRoot = 'C:\vcpkg' }
           Write-Host "vcpkg root: $vcpkgRoot"
           & "$vcpkgRoot\vcpkg" install jsoncpp:x86-windows --recurse
-          $pkgSrc = "$vcpkgRoot\packages\jsoncpp_x86-windows"
-          $pkgDst = "dvc\opensource\vcpkg\packages\jsoncpp_x86-windows"
-          New-Item -ItemType Directory -Force -Path (Split-Path $pkgDst) | Out-Null
-          Copy-Item -Recurse -Force $pkgSrc $pkgDst
-          Write-Host "copied jsoncpp package:"
-          Get-ChildItem $pkgDst -Recurse -Depth 2 | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
+          $pkg = "$vcpkgRoot\packages\jsoncpp_x86-windows"
+          $include = Join-Path $pkg 'include'
+          $includeJson = Join-Path $include 'json'
+          $lib = Join-Path $pkg 'lib'
+          if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
+          if (!(Test-Path $lib)) { throw "missing: $lib" }
+          Write-Host "include root: $include"
+          Write-Host "include/json: $includeJson"
+          Write-Host "lib root:     $lib"
+          "include=$includeJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "include_parent=$include" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "lib=$lib" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Detect installed Windows SDK
         id: sdk
@@ -141,20 +152,26 @@ jobs:
 
       - name: Build DVCModel + ExampleWindows (x86 Release)
         shell: cmd
+        env:
+          # Prepend vcpkg's jsoncpp include/lib dirs to INCLUDE and LIB
+          # so cl.exe and link.exe find `json.h` / `jsoncpp.lib` without
+          # us having to rewrite every upstream vcxproj. `%INCLUDE%` /
+          # `%LIB%` were established by the VS Developer environment
+          # that microsoft/setup-msbuild implicitly seeds.
+          INCLUDE: ${{ steps.jsoncpp.outputs.include }};${{ steps.jsoncpp.outputs.include_parent }};%INCLUDE%
+          LIB: ${{ steps.jsoncpp.outputs.lib }};%LIB%
         # Platform=x86 (not x64) — upstream's x64 ItemDefinitionGroups
         # in hwpx-owpml-model's vcxprojs are incomplete (missing
         # AdditionalIncludeDirectories), so x64 builds fail with
         # "Cannot open include file: 'OWPMLUtil/HncDefine.h'" even
         # though the headers are on disk. The Win32 (aka x86 at
         # solution level) configurations carry `./;./../;./../Common/`
-        # correctly. Upstream apparently ships Win32 binaries in
-        # practice. DVCModel.sln surfaces x86/x64 (not Win32); MSBuild
-        # maps x86 → Win32 for the underlying vcxprojs.
+        # correctly. DVCModel.sln surfaces x86/x64 (not Win32);
+        # MSBuild maps x86 → Win32 for the underlying vcxprojs.
         #
-        # Other overrides:
-        #   - PlatformToolset: upstream pins v141 (VS2017); retarget
-        #     to v143 (VS2022) since v141 isn't on the runner.
-        #   - WindowsTargetPlatformVersion: detected dynamically.
+        # PlatformToolset: upstream pins v141 (VS2017); retarget to
+        # v143 (VS2022) since v141 isn't on the runner.
+        # WindowsTargetPlatformVersion: detected dynamically.
         run: |
           cd dvc
           msbuild DVCModel.sln ^
