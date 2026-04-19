@@ -125,22 +125,27 @@ jobs:
           Write-Host "lib root:     $lib"
           if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
           if (!(Test-Path $lib)) { throw "missing: $lib" }
-          # Replace the single upstream include path with BOTH
-          # `<pkg>/include` and `<pkg>/include/json` — source files
-          # alternate between `#include "json.h"` (needs the nested
-          # path) and `#include "json/json.h"` (needs the parent).
+          # Replace the upstream include path with BOTH `<pkg>/include`
+          # and `<pkg>/include/json` — source files alternate between
+          # `#include "json.h"` (needs the nested path) and
+          # `#include "json/json.h"` (needs the parent).
           $bothInc = "$include;$includeJson"
-          $bothIncEsc = $bothInc -replace '\\','\\\\'
-          $libEsc = $lib -replace '\\','\\\\'
+          # NOTE: PowerShell's `-replace` regex REPLACEMENT string
+          # treats `\` as literal — do NOT double-escape, or the
+          # vcxproj ends up with broken paths like `C:\\vcpkg\\...`.
+          # Only `$` needs escaping (via `$$`); Windows paths don't
+          # contain `$` so a plain substitution is safe.
           $vcxproj = 'dvc\DVCModel.vcxproj'
           $text = Get-Content $vcxproj -Raw
-          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $bothIncEsc
-          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', $libEsc
+          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $bothInc
+          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', $lib
           # Defensive: Debug|Win32 flavor.
-          $text = $text -replace '\./opensource/jsoncpp/include/json', $bothIncEsc
-          $text = $text -replace '\./opensource/jsoncpp/json_git/lib/Release', $libEsc
+          $text = $text -replace '\./opensource/jsoncpp/include/json', $bothInc
+          $text = $text -replace '\./opensource/jsoncpp/json_git/lib/Release', $lib
           Set-Content -Path $vcxproj -Value $text -NoNewline
-          Write-Host "patched AdditionalInclude/LibraryDirectories in $vcxproj"
+          Write-Host "---patched vcxproj snippet---"
+          Select-String -Path $vcxproj -Pattern 'AdditionalIncludeDirectories|AdditionalLibraryDirectories' |
+            ForEach-Object { Write-Host "  $($_.Line.Trim())" }
 
       - name: Detect installed Windows SDK
         id: sdk
