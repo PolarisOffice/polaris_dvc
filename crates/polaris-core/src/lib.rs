@@ -5,6 +5,7 @@
 
 pub mod engine;
 pub mod error_codes;
+pub mod jid_registry;
 pub mod output;
 pub mod report;
 pub mod rules;

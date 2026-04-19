@@ -1,0 +1,17 @@
+[package]
+name = "polaris-gen-jids"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Dev tool: parse third_party/dvc-upstream/Source/JsonModel.h and emit a full JID registry as Rust constants. Run manually when upstream is re-vendored; not part of the default workspace build."
+
+[[bin]]
+name = "gen-jids"
+path = "src/main.rs"
+
+[dependencies]
+
+# Kept out of the workspace so a normal `cargo build --workspace` doesn't
+# pull this tool in; invoke explicitly with
+# `cargo run --manifest-path tools/gen-jids/Cargo.toml`.
+[workspace]

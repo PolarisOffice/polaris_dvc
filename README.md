@@ -49,6 +49,11 @@ wasm-pack build crates/polaris-wasm --target nodejs
 
 단계별 계획 및 진행 상황은 `/docs/` 및 커밋 로그를 참고한다. 초기 버전은 HWPX만 지원하고, HWP 5.0은 `polaris-format::DocumentFormat::Hwp5`로 감지만 되고 파싱은 `Hwp5NotImplemented`를 반환한다.
 
+## 문서
+
+- [docs/golden-tests.md](docs/golden-tests.md) — DVC parity 회귀 테스트 운영 방법
+- [docs/jid-registry.md](docs/jid-registry.md) — JID 전체 레지스트리 재생성 및 엔진 확장 가이드
+
 ## 라이선스
 
 Apache-2.0. 업스트림 DVC 저작권 귀속은 `NOTICE` 참고.
