@@ -124,23 +124,25 @@ jobs:
           Write-Host "Using Windows SDK: $ver"
           "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build DVCModel + ExampleWindows (x64 Release)
+      - name: Build DVCModel + ExampleWindows (Win32 Release)
         shell: cmd
-        # Override three pinned settings that would otherwise require
-        # a VS2017 install:
-        #   - PlatformToolset: upstream pins v141 (VS2017); the runner
-        #     ships v143 (VS2022). v141 can be installed via
-        #     vs_installer but the operation is slow and frequently
-        #     silently no-ops; retargeting is simpler.
-        #   - WindowsTargetPlatformVersion: upstream pins 10.0.17763.0
-        #     which is not on the runner (detected dynamically above).
-        #   - _MSC_VER compat: upstream code is C++14-ish, builds fine
-        #     under v143 in our tests so far.
+        # Platform=Win32 (not x64) — upstream's x64 ItemDefinitionGroups
+        # in hwpx-owpml-model's vcxprojs are incomplete (missing
+        # AdditionalIncludeDirectories), so x64 builds fail with
+        # "Cannot open include file: 'OWPMLUtil/HncDefine.h'" even
+        # though the headers are on disk. The Win32 configurations
+        # carry `./;./../;./../Common/` correctly. Upstream apparently
+        # ships Win32 binaries in practice.
+        #
+        # Other overrides:
+        #   - PlatformToolset: upstream pins v141 (VS2017); retarget
+        #     to v143 (VS2022) since v141 isn't on the runner.
+        #   - WindowsTargetPlatformVersion: detected dynamically.
         run: |
           cd dvc
           msbuild DVCModel.sln ^
             /p:Configuration=Release ^
-            /p:Platform=x64 ^
+            /p:Platform=Win32 ^
             /p:PlatformToolset=v143 ^
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
