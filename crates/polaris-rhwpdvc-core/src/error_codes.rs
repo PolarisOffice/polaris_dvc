@@ -64,6 +64,10 @@ impl ErrorCode {
             1016 => "Shadow setting does not match specification",
             1017 => "Superscript setting does not match specification",
             1018 => "Subscript setting does not match specification",
+            1019 => "Shadow type does not match specification",
+            1020 => "Shadow X offset does not match specification",
+            1021 => "Shadow Y offset does not match specification",
+            1022 => "Shadow color does not match specification",
             2001 => "Paragraph alignment does not match specification",
             2005 => "Paragraph indent does not match specification",
             2006 => "Paragraph outdent does not match specification",
@@ -126,6 +130,10 @@ pub mod jid {
     pub const CHAR_SHAPE_SHADOW: ErrorCode = r::JID_CHAR_SHAPE_SHADOW;
     pub const CHAR_SHAPE_SUPSCRIPT: ErrorCode = r::JID_CHAR_SHAPE_SUPSCRIPT;
     pub const CHAR_SHAPE_SUBSCRIPT: ErrorCode = r::JID_CHAR_SHAPE_SUBSCRIPT;
+    pub const CHAR_SHAPE_SHADOWTYPE: ErrorCode = r::JID_CHAR_SHAPE_SHADOWTYPE;
+    pub const CHAR_SHAPE_SHADOW_X: ErrorCode = r::JID_CHAR_SHAPE_SHADOW_X;
+    pub const CHAR_SHAPE_SHADOW_Y: ErrorCode = r::JID_CHAR_SHAPE_SHADOW_Y;
+    pub const CHAR_SHAPE_SHADOW_COLOR: ErrorCode = r::JID_CHAR_SHAPE_SHADOW_COLOR;
     // Upstream calls this `HORIZONTAL` (the `horizontal` attribute on
     // `<hh:align>`); keep our short name `ALIGN` for reader clarity.
     pub const PARA_SHAPE_ALIGN: ErrorCode = r::JID_PARA_SHAPE_HORIZONTAL;

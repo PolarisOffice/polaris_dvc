@@ -279,6 +279,21 @@ pub struct CharShape {
     pub supscript: Option<bool>,
     /// Presence-of-`<hh:subscript/>` (아래첨자). Upstream `JID_CHAR_SHAPE_SUBSCRIPT` (1018).
     pub subscript: Option<bool>,
+    /// Shadow type enum. Accepts integer (0=NONE, 1=비연속/DISCONTINUOUS,
+    /// 2=연속/CONTINUOUS) or the corresponding string (Korean or
+    /// upper-case OWPML form). Upstream `JID_CHAR_SHAPE_SHADOWTYPE` (1019).
+    pub shadowtype: Option<String>,
+    /// Shadow X offset. Upstream `JID_CHAR_SHAPE_SHADOW_X` (1020).
+    #[serde(rename = "shadow-x")]
+    pub shadow_x: Option<Range64>,
+    /// Shadow Y offset. Upstream `JID_CHAR_SHAPE_SHADOW_Y` (1021).
+    /// Accept both `shadow-y` (jsonFullSpec.json) and `shadow-Y`
+    /// (JsonModel.h constant) spellings.
+    #[serde(rename = "shadow-y", alias = "shadow-Y")]
+    pub shadow_y: Option<Range64>,
+    /// Shadow color. Upstream `JID_CHAR_SHAPE_SHADOW_COLOR` (1022).
+    #[serde(rename = "shadow-color")]
+    pub shadow_color: Option<ColorValue>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

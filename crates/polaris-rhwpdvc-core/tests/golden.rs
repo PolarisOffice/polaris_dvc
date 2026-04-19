@@ -544,6 +544,52 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // Shadow detail: fixture shadow=true with kind="CONTINUOUS"
+            // (ord 2); spec demands shadowtype=1 (비연속) → 1019 fires.
+            name: "29_charshape_shadowtype_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].shadow = true;
+                f.char_prs[0].shadow_kind = "CONTINUOUS".into();
+                f
+            },
+            spec: r#"{
+  "charshape": { "shadowtype": "비연속" }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Shadow X offset: fixture offset_x=25; spec range {0..=20} → 1020.
+            name: "30_charshape_shadow_x_outside_range",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].shadow = true;
+                f.char_prs[0].shadow_offset_x = 25;
+                f
+            },
+            spec: r#"{
+  "charshape": { "shadow-x": { "min": 0, "max": 20 } }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Shadow color: fixture color=#FF0000; spec demands #000000 → 1022.
+            name: "31_charshape_shadow_color_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].shadow = true;
+                f.char_prs[0].shadow_color = "#FF0000".into();
+                f
+            },
+            spec: r##"{
+  "charshape": { "shadow-color": "#000000" }
+}
+"##,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Same fixture + spec as 24_table_bgfill_type_mismatch, but
             // the DvcStrict profile filters out JIDs upstream leaves as
             // no-op. bgfill-type is one of those, so expected.json is [].

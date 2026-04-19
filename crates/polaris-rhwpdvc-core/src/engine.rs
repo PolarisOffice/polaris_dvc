@@ -480,6 +480,76 @@ fn check_char_shape(
         }
     }
 
+    // Shadow detail (shadowtype / shadow-x / shadow-y / shadow-color).
+    // Only compare when the doc has an active shadow — if the doc has no
+    // shadow, the top-level `shadow` boolean (Pt.1 above) already covers
+    // the "present/absent" mismatch.
+    if let Some(shadow) = char_pr.shadow.as_ref() {
+        if let Some(expected) = spec.shadowtype.as_deref() {
+            let actual_ord = shadow_type_ordinal(&shadow.kind);
+            let expected_ord = shadow_type_ordinal(expected);
+            if actual_ord != expected_ord {
+                let v = violation_for(
+                    ctx,
+                    paragraph,
+                    run,
+                    jid::CHAR_SHAPE_SHADOWTYPE,
+                    format!(
+                        "shadowtype {:?} (ord={}) != spec {:?} (ord={})",
+                        shadow.kind, actual_ord, expected, expected_ord
+                    ),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+        if let Some(r) = spec.shadow_x.as_ref() {
+            if r.is_constrained() && !r.matches(shadow.offset_x as f64) {
+                let v = violation_for(
+                    ctx,
+                    paragraph,
+                    run,
+                    jid::CHAR_SHAPE_SHADOW_X,
+                    format!("shadow-x {} outside spec {}", shadow.offset_x, r.describe()),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+        if let Some(r) = spec.shadow_y.as_ref() {
+            if r.is_constrained() && !r.matches(shadow.offset_y as f64) {
+                let v = violation_for(
+                    ctx,
+                    paragraph,
+                    run,
+                    jid::CHAR_SHAPE_SHADOW_Y,
+                    format!("shadow-y {} outside spec {}", shadow.offset_y, r.describe()),
+                );
+                if !ctx.push(v) {
+                    return false;
+                }
+            }
+        }
+        if let Some(expected) = spec.shadow_color.as_ref() {
+            if let Some(actual) = decode_hex_color(&shadow.color) {
+                if actual != expected.0 {
+                    let v = violation_for(
+                        ctx,
+                        paragraph,
+                        run,
+                        jid::CHAR_SHAPE_SHADOW_COLOR,
+                        format!("shadow-color {:#x} != spec {:#x}", actual, expected.0),
+                    );
+                    if !ctx.push(v) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
     if let Some(r) = spec.ratio.as_ref() {
         if r.is_constrained() && !r.matches(char_pr.ratio_hangul) {
             let v = violation_for(
@@ -674,6 +744,30 @@ fn decode_hex_color(s: &str) -> Option<u32> {
         u32::from_str_radix(t, 16).ok()
     } else {
         None
+    }
+}
+
+/// Map a shadow-type identifier (from OWPML XML or from the spec JSON)
+/// to upstream's `ShadowType` ordinal: 0=None, 1=Discontinuous, 2=Continuous.
+///
+/// Accepts:
+///   - integer-as-string ("0", "1", "2")
+///   - Korean (jsonFullSpec.json) "없음"/"비연속"/"연속"
+///   - OWPML upper-case "NONE"/"DISCONTINUOUS"/"CONTINUOUS"
+///   - empty string → 0
+///
+/// Anything unrecognized falls through to a sentinel (`u32::MAX`) so a
+/// known↔unknown comparison is never a false match.
+fn shadow_type_ordinal(s: &str) -> u32 {
+    let t = s.trim();
+    if let Ok(n) = t.parse::<u32>() {
+        return n;
+    }
+    match t {
+        "" | "없음" | "NONE" | "None" | "none" => 0,
+        "비연속" | "DISCONTINUOUS" | "Discontinuous" | "UnContinue" | "uncontinue" => 1,
+        "연속" | "CONTINUOUS" | "Continuous" | "Continue" | "continue" => 2,
+        _ => u32::MAX,
     }
 }
 

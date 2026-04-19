@@ -127,6 +127,13 @@ pub struct FixCharPr {
     pub outline: bool,
     pub emboss: bool,
     pub engrave: bool,
+    /// `<hh:shadow type="…" …/>` kind attribute. Defaults to
+    /// `"CONTINUOUS"` when `shadow=true`, ignored when `shadow=false`
+    /// (which emits `type="NONE"`).
+    pub shadow_kind: String,
+    pub shadow_offset_x: i32,
+    pub shadow_offset_y: i32,
+    pub shadow_color: String,
     /// `<hh:shadow type="CONTINUOUS" …/>` when true; `"NONE"` when false.
     pub shadow: bool,
     pub supscript: bool,
@@ -146,6 +153,10 @@ impl Default for FixCharPr {
             emboss: false,
             engrave: false,
             shadow: false,
+            shadow_kind: "CONTINUOUS".into(),
+            shadow_offset_x: 10,
+            shadow_offset_y: 10,
+            shadow_color: "#C0C0C0".into(),
             supscript: false,
             subscript: false,
         }
@@ -410,11 +421,21 @@ impl Fixture {
                 "<hh:outline type=\"{}\"/>",
                 if c.outline { "SOLID" } else { "NONE" }
             ));
-            // Shadow: `type="NONE"` = OFF, "CONTINUOUS" = ON.
-            s.push_str(&format!(
-                "<hh:shadow type=\"{}\" color=\"#C0C0C0\" offsetX=\"10\" offsetY=\"10\"/>",
-                if c.shadow { "CONTINUOUS" } else { "NONE" }
-            ));
+            // Shadow: `type="NONE"` = OFF, "CONTINUOUS"/"DISCONTINUOUS" = ON.
+            // When ON, emit the configurable kind/offset/color attrs.
+            if c.shadow {
+                s.push_str(&format!(
+                    "<hh:shadow type=\"{}\" color=\"{}\" offsetX=\"{}\" offsetY=\"{}\"/>",
+                    c.shadow_kind, c.shadow_color, c.shadow_offset_x, c.shadow_offset_y
+                ));
+            } else {
+                // Baseline: the element is still present with type=NONE so
+                // the XML matches what the hwp editor emits. Color/offsets
+                // here are immaterial — parser discards them under NONE.
+                s.push_str(
+                    "<hh:shadow type=\"NONE\" color=\"#C0C0C0\" offsetX=\"10\" offsetY=\"10\"/>",
+                );
+            }
             // Self-closing flag decorations: omitted when false.
             if c.emboss {
                 s.push_str("<hh:emboss/>");
