@@ -738,6 +738,7 @@ fn golden_cases() {
         let doc_path = dir.join("doc.hwpx");
         let spec_path = dir.join("spec.json");
         let expected_path = dir.join("expected.json");
+        let expected_xml_path = dir.join("expected.xml");
 
         let fixture = (case.build)();
         let hwpx_bytes = fixture.to_hwpx_bytes();
@@ -750,6 +751,7 @@ fn golden_cases() {
         };
         let report = validate(&doc, &spec, &opts);
         let actual = report.to_json_value(OutputOption::AllOption);
+        let actual_xml = report.to_xml_string(OutputOption::AllOption);
 
         if regenerate() {
             fs::create_dir_all(&dir).unwrap();
@@ -757,6 +759,7 @@ fn golden_cases() {
             fs::write(&spec_path, case.spec).unwrap();
             let pretty = serde_json::to_string_pretty(&actual).unwrap() + "\n";
             fs::write(&expected_path, pretty).unwrap();
+            fs::write(&expected_xml_path, &actual_xml).unwrap();
             continue;
         }
 
@@ -777,6 +780,18 @@ fn golden_cases() {
         assert_eq!(
             actual, expected,
             "golden output mismatch for {} — regenerate with POLARIS_REGEN_FIXTURES=1",
+            case.name
+        );
+
+        let committed_xml = fs::read_to_string(&expected_xml_path).unwrap_or_else(|_| {
+            panic!(
+                "missing expected.xml for {}; run POLARIS_REGEN_FIXTURES=1",
+                case.name
+            )
+        });
+        assert_eq!(
+            actual_xml, committed_xml,
+            "golden XML output mismatch for {} — regenerate with POLARIS_REGEN_FIXTURES=1",
             case.name
         );
     }
@@ -805,7 +820,7 @@ fn no_orphan_case_directories() {
         for c in cases() {
             let d = case_dir(c.name);
             assert!(d.exists(), "missing dir for {}", c.name);
-            for f in ["doc.hwpx", "spec.json", "expected.json"] {
+            for f in ["doc.hwpx", "spec.json", "expected.json", "expected.xml"] {
                 assert!(
                     d.join(f).exists(),
                     "missing {}/{} — run POLARIS_REGEN_FIXTURES=1",

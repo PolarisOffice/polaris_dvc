@@ -26,7 +26,9 @@ struct Cli {
     #[arg(short = 'j', long_help = "Emit JSON (default).")]
     json: bool,
 
-    /// Equivalent to `--format=xml` (not implemented yet).
+    /// Equivalent to `--format=xml`. Available in the default
+    /// (Extended) profile; under `--dvc-strict` this exits 2 to match
+    /// upstream DVC, which never implemented XML output.
     #[arg(short = 'x')]
     xml: bool,
 
@@ -71,7 +73,12 @@ fn main() -> ExitCode {
         (None, true) => Format::Xml,
         (None, false) => Format::Json,
     };
-    if matches!(format, Format::Xml) {
+    // Upstream DVC's `-x` / `--format=xml` is unimplemented
+    // (`CommandParser.cpp` returns `NotYet`). In `--dvc-strict` we match
+    // that behavior exactly — XML requests exit 2 with the upstream
+    // message — so output stays byte-compatible. In the default
+    // (Extended) profile we go beyond upstream and emit our own XML.
+    if matches!(format, Format::Xml) && cli.dvc_strict {
         eprintln!("polaris-rhwpdvc: --format=xml is not yet implemented");
         return ExitCode::from(2);
     }
@@ -118,17 +125,31 @@ fn main() -> ExitCode {
     };
     let report = polaris_rhwpdvc_core::engine::validate(&doc, &spec, &opts);
 
-    let payload = report.to_json_value(polaris_rhwpdvc_core::output::OutputOption::AllOption);
-    let json = serde_json::to_string_pretty(&payload).expect("serialize report");
+    let option = polaris_rhwpdvc_core::output::OutputOption::AllOption;
+    let body: String = match format {
+        Format::Json => {
+            let payload = report.to_json_value(option);
+            serde_json::to_string_pretty(&payload).expect("serialize report")
+        }
+        Format::Xml => {
+            // Gated above: only reachable when NOT in --dvc-strict.
+            report.to_xml_string(option)
+        }
+    };
     if let Some(path) = cli.file {
-        if let Err(e) = std::fs::write(&path, json.as_bytes()) {
+        if let Err(e) = std::fs::write(&path, body.as_bytes()) {
             eprintln!("polaris-rhwpdvc: failed to write output: {e}");
             return ExitCode::from(3);
         }
     } else {
         let stdout = std::io::stdout();
         let mut lock = stdout.lock();
-        if lock.write_all(json.as_bytes()).is_err() || lock.write_all(b"\n").is_err() {
+        let trailer: &[u8] = if matches!(format, Format::Xml) {
+            b""
+        } else {
+            b"\n"
+        };
+        if lock.write_all(body.as_bytes()).is_err() || lock.write_all(trailer).is_err() {
             return ExitCode::from(3);
         }
     }

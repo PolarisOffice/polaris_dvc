@@ -147,18 +147,22 @@ CLI엔 연결 안 됨.
 
 **예상 작업량**: 1 커밋.
 
-### 8. XML 출력 (`-x` / `--format=xml`)
-**왜**: 업스트림 지원, 우린 `unimplemented`로 에러 반환.
+### 8. XML 출력 (`-x` / `--format=xml`) — ✅ 완료 (Extended 전용)
+**핵심 발견**: upstream DVC는 `-x` / `--format=xml`을 **구현하지
+않았다**. `CommandParser.cpp` 라인 217-220에서 `-x`는 `NotYet` 에러를
+반환하고, `--format=xml`은 FormatXML 플래그만 세팅하고 실제 writer가
+없다. `ExportInterface.h`의 XML entry는 주석처리(`//XML,`).
 
-**할 일**:
-- `quick-xml`의 Writer로 `ViolationRecord`를 `<error>` 요소 리스트로
-  직렬화
-- Element/attribute 이름을 upstream `DVCOutputXml.cpp`와 맞춤 (미확인 —
-  소스 확인 필요)
+따라서 parity 관점에선 "할 일 없음"이지만, CheckProfile dual-mode
+철학을 따라 **Extended에서만** polaris 자체 XML 스키마를 제공한다:
+- `polaris-rhwpdvc -x input.hwpx -t spec.json` → XML 출력
+- `polaris-rhwpdvc --dvc-strict -x …` → upstream과 동일하게 exit 2
 
-**현재**: CLI에서 `-x` 요청하면 "not yet implemented" 후 exit 2.
+스키마: attribute-per-field `<violation>` 엘리먼트, 속성 이름·순서는
+JSON 출력과 1:1. Empty-text drop 규칙도 JSON과 동일.
 
-**예상 작업량**: 2 커밋 (upstream 포맷 확인 + 구현).
+구현: `Report::to_xml_string(option)`, `ViolationRecord::append_xml`.
+Golden: 각 케이스당 `expected.xml` 커밋됨 (66개).
 
 ---
 

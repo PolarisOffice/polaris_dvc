@@ -120,6 +120,88 @@ impl ViolationRecord {
 
         v
     }
+
+    /// Returns `true` when this record should be suppressed (empty
+    /// `errorText` outside the table-family options — same rule
+    /// `to_json_value` applies before emitting).
+    pub(crate) fn is_dropped(&self, opt: OutputOption) -> bool {
+        self.text.is_empty() && !opt.include_table()
+    }
+
+    /// Append a `<violation>` element with attribute-per-field to `out`.
+    /// The attribute order mirrors the JSON field order exactly, so XML
+    /// and JSON outputs stay diffable when comparing parity runs.
+    ///
+    /// Upstream DVC has no XML implementation (the `-x` / `--format=xml`
+    /// flag returns "NotYet"), so this format is polaris-specific and
+    /// only surfaces in `CheckProfile::Extended`. See `docs/parity-
+    /// roadmap.md` for why we gate it.
+    pub(crate) fn append_xml(&self, opt: OutputOption, out: &mut String) {
+        if self.is_dropped(opt) {
+            return;
+        }
+        out.push_str("  <violation");
+        write_xml_attr(out, "CharIDRef", &self.char_pr_id_ref.to_string());
+        write_xml_attr(out, "ParaPrIDRef", &self.para_pr_id_ref.to_string());
+        write_xml_attr(out, "errorText", &self.text);
+        write_xml_attr(out, "PageNo", &self.page_no.to_string());
+        write_xml_attr(out, "LineNo", &self.line_no.to_string());
+        write_xml_attr(out, "ErrorCode", &self.error_code.value().to_string());
+        if opt.include_table() {
+            write_xml_attr(out, "TableID", &self.table_id.to_string());
+            write_xml_attr(out, "IsInTable", bool_xml(self.is_in_table));
+            write_xml_attr(out, "IsInTableInTable", bool_xml(self.is_in_table_in_table));
+            write_xml_attr(out, "TableRow", &self.table_row.to_string());
+            write_xml_attr(out, "TableCol", &self.table_col.to_string());
+        }
+        if opt.include_style() {
+            write_xml_attr(out, "UseStyle", bool_xml(self.use_style));
+        }
+        if opt.include_shape() {
+            write_xml_attr(out, "IsInShape", bool_xml(self.is_in_shape));
+        }
+        if opt.include_hyperlink() {
+            write_xml_attr(out, "UseHyperlink", bool_xml(self.use_hyperlink));
+        }
+        out.push_str("/>\n");
+    }
+}
+
+fn bool_xml(b: bool) -> &'static str {
+    if b {
+        "true"
+    } else {
+        "false"
+    }
+}
+
+fn write_xml_attr(out: &mut String, name: &str, raw_value: &str) {
+    out.push(' ');
+    out.push_str(name);
+    out.push_str("=\"");
+    for c in raw_value.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            // XML 1.0 forbids most C0 control chars even when escaped —
+            // replace them with U+FFFD to keep the output well-formed.
+            // `\t`, `\n`, `\r` are valid and pass through.
+            '\t' | '\n' | '\r' => {
+                out.push_str(&match c {
+                    '\t' => "&#9;".to_string(),
+                    '\n' => "&#10;".to_string(),
+                    '\r' => "&#13;".to_string(),
+                    _ => unreachable!(),
+                });
+            }
+            ch if (ch as u32) < 0x20 => out.push('\u{FFFD}'),
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
 }
 
 #[cfg(test)]

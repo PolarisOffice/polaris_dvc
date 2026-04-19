@@ -86,6 +86,10 @@ Review the diff before committing. Orphan directories (case dir with no
 matching `Case` entry in `golden.rs`) fail a separate test — when
 renaming a case, delete the old directory.
 
+As of the XML-output change (Phase 8), each case directory also holds
+`expected.xml`. The harness regenerates both JSON and XML expected
+files from the same engine run — they stay semantically identical.
+
 ### 3. Output JSON shape matches upstream DVCOutputJson
 
 The `ViolationRecord` struct in `crates/polaris-rhwpdvc-core/src/output.rs`
@@ -272,6 +276,11 @@ User-facing:
 - CLI: `--dvc-strict`
 - WASM: `validate(hwpx, spec, { dvcStrict: true })`
 - Web demo: checkbox next to the Validate button
+- XML output (`-x` / `--format=xml`) is an Extended-only extension.
+  Upstream never implemented it; under `--dvc-strict` our CLI mirrors
+  that by returning the same "NotYet" error and exit code 2. Under
+  Extended (default), polaris emits its own attribute-per-field
+  `<violation>` elements — see `Report::to_xml_string`.
 
 When adding a new checker:
 - If upstream also implements it → no strict-mode action needed.
