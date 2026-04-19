@@ -152,12 +152,10 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                     _ => {}
                 }
             }
-            Ok(Event::Text(t)) => {
-                if in_text {
-                    if let Some(r) = cur_run.as_mut() {
-                        if let Ok(s) = t.unescape() {
-                            r.text.push_str(&s);
-                        }
+            Ok(Event::Text(t)) if in_text => {
+                if let Some(r) = cur_run.as_mut() {
+                    if let Ok(s) = t.unescape() {
+                        r.text.push_str(&s);
                     }
                 }
             }
