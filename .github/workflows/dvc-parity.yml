@@ -104,35 +104,37 @@ jobs:
               fi
           done
 
-      - name: Install jsoncpp via vcpkg (x86-windows)
-        id: jsoncpp
+      - name: Install jsoncpp via vcpkg + patch vcxproj paths
         shell: pwsh
-        # Upstream's Release|Win32 config expects jsoncpp under
-        # `./opensource/vcpkg/packages/jsoncpp_x86-windows/...`. Rather
-        # than replicate that exact tree (Copy-Item's dir semantics
-        # are easy to get wrong), install via vcpkg and expose the
-        # resulting include/lib directories to a later step through
-        # GITHUB_OUTPUT. The Build step then prepends them to the
-        # `INCLUDE` / `LIB` environment variables that cl.exe and
-        # link.exe consult, sidestepping the vcxproj's stale relative
-        # paths entirely.
+        # Install jsoncpp at vcpkg's default location, then rewrite the
+        # upstream DVCModel.vcxproj's Release|Win32 AdditionalInclude
+        # Directories / AdditionalLibraryDirectories to point at that
+        # install. Env var-based INCLUDE/LIB injection didn't survive
+        # MSBuild's rebuild of its internal tool environment, so we
+        # edit the vcxproj directly.
         run: |
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if (-not $vcpkgRoot) { $vcpkgRoot = 'C:\vcpkg' }
-          Write-Host "vcpkg root: $vcpkgRoot"
           & "$vcpkgRoot\vcpkg" install jsoncpp:x86-windows --recurse
           $pkg = "$vcpkgRoot\packages\jsoncpp_x86-windows"
-          $include = Join-Path $pkg 'include'
-          $includeJson = Join-Path $include 'json'
+          $includeJson = Join-Path $pkg 'include\json'
           $lib = Join-Path $pkg 'lib'
-          if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
-          if (!(Test-Path $lib)) { throw "missing: $lib" }
-          Write-Host "include root: $include"
           Write-Host "include/json: $includeJson"
           Write-Host "lib root:     $lib"
-          "include=$includeJson" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "include_parent=$include" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "lib=$lib" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
+          if (!(Test-Path $lib)) { throw "missing: $lib" }
+          # Escape backslashes for regex + XML.
+          $incEsc = $includeJson -replace '\\','\\\\'
+          $libEsc = $lib -replace '\\','\\\\'
+          $vcxproj = 'dvc\DVCModel.vcxproj'
+          $text = Get-Content $vcxproj -Raw
+          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $incEsc
+          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', $libEsc
+          # Older flavor path used in Debug|Win32 — also patch for safety.
+          $text = $text -replace '\./opensource/jsoncpp/include/json', $incEsc
+          $text = $text -replace '\./opensource/jsoncpp/json_git/lib/Release', $libEsc
+          Set-Content -Path $vcxproj -Value $text -NoNewline
+          Write-Host "patched AdditionalInclude/LibraryDirectories in $vcxproj"
 
       - name: Detect installed Windows SDK
         id: sdk
@@ -152,14 +154,6 @@ jobs:
 
       - name: Build DVCModel + ExampleWindows (x86 Release)
         shell: cmd
-        env:
-          # Prepend vcpkg's jsoncpp include/lib dirs to INCLUDE and LIB
-          # so cl.exe and link.exe find `json.h` / `jsoncpp.lib` without
-          # us having to rewrite every upstream vcxproj. `%INCLUDE%` /
-          # `%LIB%` were established by the VS Developer environment
-          # that microsoft/setup-msbuild implicitly seeds.
-          INCLUDE: ${{ steps.jsoncpp.outputs.include }};${{ steps.jsoncpp.outputs.include_parent }};%INCLUDE%
-          LIB: ${{ steps.jsoncpp.outputs.lib }};%LIB%
         # Platform=x86 (not x64) — upstream's x64 ItemDefinitionGroups
         # in hwpx-owpml-model's vcxprojs are incomplete (missing
         # AdditionalIncludeDirectories), so x64 builds fail with
