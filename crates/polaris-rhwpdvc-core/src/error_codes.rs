@@ -45,70 +45,152 @@ impl ErrorCode {
 
     pub fn text(self) -> &'static str {
         // Human-readable messages for codes the engine actively emits.
+        // Each arm pulls its numeric value from the curated `jid` aliases
+        // (which in turn resolve to `jid_registry` constants), so a
+        // upstream JID renumbering can never silently desync the messages.
         // Unlisted codes fall through to a generic message — the full
         // registry in `jid_registry` exists so unimplemented categories
         // can still be referenced by downstream code without a placeholder
         // `u32` literal.
+        //
+        // `match` patterns on u32 need `const` bindings, so we surface
+        // each `jid::X.value()` through a named constant here. The cost
+        // is a bit of boilerplate; the win is zero numeric drift risk.
+        const FONTSIZE: u32 = jid::CHAR_SHAPE_FONTSIZE.value();
+        const FONT: u32 = jid::CHAR_SHAPE_FONT.value();
+        const RSIZE: u32 = jid::CHAR_SHAPE_RSIZE.value();
+        const RATIO: u32 = jid::CHAR_SHAPE_RATIO.value();
+        const SPACING: u32 = jid::CHAR_SHAPE_SPACING.value();
+        const BOLD: u32 = jid::CHAR_SHAPE_BOLD.value();
+        const ITALIC: u32 = jid::CHAR_SHAPE_ITALIC.value();
+        const UNDERLINE: u32 = jid::CHAR_SHAPE_UNDERLINE.value();
+        const STRIKEOUT: u32 = jid::CHAR_SHAPE_STRIKEOUT.value();
+        const OUTLINE: u32 = jid::CHAR_SHAPE_OUTLINE.value();
+        const EMBOSS: u32 = jid::CHAR_SHAPE_EMBOSS.value();
+        const ENGRAVE: u32 = jid::CHAR_SHAPE_ENGRAVE.value();
+        const SHADOW: u32 = jid::CHAR_SHAPE_SHADOW.value();
+        const SUPSCRIPT: u32 = jid::CHAR_SHAPE_SUPSCRIPT.value();
+        const SUBSCRIPT: u32 = jid::CHAR_SHAPE_SUBSCRIPT.value();
+        const SHADOWTYPE: u32 = jid::CHAR_SHAPE_SHADOWTYPE.value();
+        const SHADOW_X: u32 = jid::CHAR_SHAPE_SHADOW_X.value();
+        const SHADOW_Y: u32 = jid::CHAR_SHAPE_SHADOW_Y.value();
+        const SHADOW_COLOR: u32 = jid::CHAR_SHAPE_SHADOW_COLOR.value();
+        const KERNING: u32 = jid::CHAR_SHAPE_KERNING.value();
+
+        const PARA_ALIGN: u32 = jid::PARA_SHAPE_ALIGN.value();
+        const PARA_INDENT: u32 = jid::PARA_SHAPE_INDENT.value();
+        const PARA_OUTDENT: u32 = jid::PARA_SHAPE_OUTDENT.value();
+        const PARA_LINESPACING: u32 = jid::PARA_SHAPE_LINESPACING_TYPE.value();
+        const PARA_LINESPACINGVALUE: u32 = jid::PARA_SHAPE_LINESPACINGVALUE.value();
+        const PARA_SPACING_PARAUP: u32 = jid::PARA_SHAPE_SPACING_PARAUP.value();
+        const PARA_SPACING_PARABOTTOM: u32 = jid::PARA_SHAPE_SPACING_PARABOTTOM.value();
+
+        const TABLE_WIDTH: u32 = jid::TABLE_SIZE_WIDTH.value();
+        const TABLE_HEIGHT: u32 = jid::TABLE_SIZE_HEIGHT.value();
+        const TABLE_FIXED: u32 = jid::TABLE_SIZE_FIXED.value();
+        const TABLE_TREAT_AS_CHAR: u32 = jid::TABLE_TREAT_AS_CHAR.value();
+        const TABLE_POS: u32 = jid::TABLE_POS.value();
+        const TABLE_TEXTPOS: u32 = jid::TABLE_TEXTPOS.value();
+        const TABLE_MARGIN_LEFT: u32 = jid::TABLE_MARGIN_LEFT.value();
+        const TABLE_MARGIN_RIGHT: u32 = jid::TABLE_MARGIN_RIGHT.value();
+        const TABLE_MARGIN_TOP: u32 = jid::TABLE_MARGIN_TOP.value();
+        const TABLE_MARGIN_BOTTOM: u32 = jid::TABLE_MARGIN_BOTTOM.value();
+        const TABLE_CAPTION_POSITION: u32 = jid::TABLE_CAPTION_POSITION.value();
+        const TABLE_CAPTION_SIZE: u32 = jid::TABLE_CAPTION_SIZE.value();
+        const TABLE_CAPTION_SPACING: u32 = jid::TABLE_CAPTION_SPACING.value();
+        const TABLE_BGFILL_TYPE: u32 = jid::TABLE_BGFILL_TYPE.value();
+        const TABLE_BGFILL_FACECOLOR: u32 = jid::TABLE_BGFILL_FACECOLOR.value();
+        const TABLE_BGFILL_PATTONCOLOR: u32 = jid::TABLE_BGFILL_PATTONCOLOR.value();
+        const TABLE_BGFILL_PATTONTYPE: u32 = jid::TABLE_BGFILL_PATTONTYPE.value();
+        const TABLE_BORDER: u32 = jid::TABLE_BORDER.value();
+        const TABLE_BORDER_TYPE: u32 = jid::TABLE_BORDER_TYPE.value();
+        const TABLE_BORDER_SIZE: u32 = jid::TABLE_BORDER_SIZE.value();
+        const TABLE_BORDER_COLOR: u32 = jid::TABLE_BORDER_COLOR.value();
+        const TABLE_IN_TABLE: u32 = jid::TABLE_IN_TABLE.value();
+
+        const SPECIAL_CHARACTER: u32 = jid::SPECIAL_CHARACTER.value();
+        const SPECIAL_CHAR_MINIMUM: u32 = jid::SPECIAL_CHAR_MINIMUM.value();
+        const SPECIAL_CHAR_MAXIMUM: u32 = jid::SPECIAL_CHAR_MAXIMUM.value();
+
+        const OUTLINE_NUMBERTYPE: u32 = jid::OUTLINESHAPE_NUMBERTYPE.value();
+        const OUTLINE_NUMBERSHAPE: u32 = jid::OUTLINESHAPE_NUMBERSHAPE.value();
+        const BULLET_SHAPES: u32 = jid::BULLET_SHAPES.value();
+        const PARANUMBULLET_NUMBERTYPE: u32 = jid::PARANUMBULLET_NUMBERTYPE.value();
+        const PARANUMBULLET_NUMBERSHAPE: u32 = jid::PARANUMBULLET_NUMBERSHAPE.value();
+
+        const STYLE_PERMISSION: u32 = jid::STYLE_PERMISSION.value();
+        const HYPERLINK_PERMISSION: u32 = jid::HYPERLINK_PERMISSION.value();
+        const MACRO_PERMISSION: u32 = jid::MACRO_PERMISSION.value();
+
         match self.0 {
-            1001 => "Font size does not match specification",
-            1004 => "Font name does not match specification",
-            1007 => "Character ratio does not match specification",
-            1008 => "Character spacing does not match specification",
-            1009 => "Bold setting does not match specification",
-            1010 => "Italic setting does not match specification",
-            1011 => "Underline setting does not match specification",
-            1012 => "Strikeout setting does not match specification",
-            1013 => "Outline setting does not match specification",
-            1014 => "Emboss setting does not match specification",
-            1015 => "Engrave setting does not match specification",
-            1016 => "Shadow setting does not match specification",
-            1017 => "Superscript setting does not match specification",
-            1018 => "Subscript setting does not match specification",
-            1019 => "Shadow type does not match specification",
-            1020 => "Shadow X offset does not match specification",
-            1021 => "Shadow Y offset does not match specification",
-            1022 => "Shadow color does not match specification",
-            1005 => "Relative size does not match specification",
-            1031 => "Kerning setting does not match specification",
-            2001 => "Paragraph alignment does not match specification",
-            2005 => "Paragraph indent does not match specification",
-            2006 => "Paragraph outdent does not match specification",
-            2007 => "Line spacing type does not match specification",
-            2008 => "Line spacing value does not match specification",
-            2009 => "Paragraph top spacing does not match specification",
-            2010 => "Paragraph bottom spacing does not match specification",
-            3001 => "Table width does not match specification",
-            3002 => "Table height does not match specification",
-            3003 => "Table size-fixed setting does not match specification",
-            3005 => "Table position (text wrap) does not match specification",
-            3006 => "Table text position (text flow) does not match specification",
-            3022 => "Table left margin does not match specification",
-            3023 => "Table right margin does not match specification",
-            3024 => "Table top margin does not match specification",
-            3025 => "Table bottom margin does not match specification",
-            3026 => "Table caption position does not match specification",
-            3027 => "Table caption size does not match specification",
-            3028 => "Table caption spacing does not match specification",
-            3037 => "Table background fill type does not match specification",
-            3038 => "Table background face color does not match specification",
-            3039 => "Table background pattern color does not match specification",
-            3040 => "Table background pattern type does not match specification",
-            3031 => "Table border does not match specification",
-            3033 => "Table border type does not match specification",
-            3034 => "Table border size does not match specification",
-            3035 => "Table border color does not match specification",
-            3056 => "Table-in-table is not permitted",
-            3100 => "Character code point outside specification range",
-            3101 => "Character code point below specification minimum",
-            3102 => "Character code point above specification maximum",
-            3206 => "Outline numbering type does not match specification",
-            3207 => "Outline numbering shape does not match specification",
-            3304 => "Bullet character not in allowed set",
-            3406 => "Paragraph numbering type does not match specification",
-            3407 => "Paragraph numbering shape does not match specification",
-            3502 => "Style usage is not permitted",
-            6901 => "Hyperlink usage is not permitted",
-            7001 => "Macro usage is not permitted",
+            FONTSIZE => "Font size does not match specification",
+            FONT => "Font name does not match specification",
+            RSIZE => "Relative size does not match specification",
+            RATIO => "Character ratio does not match specification",
+            SPACING => "Character spacing does not match specification",
+            BOLD => "Bold setting does not match specification",
+            ITALIC => "Italic setting does not match specification",
+            UNDERLINE => "Underline setting does not match specification",
+            STRIKEOUT => "Strikeout setting does not match specification",
+            OUTLINE => "Outline setting does not match specification",
+            EMBOSS => "Emboss setting does not match specification",
+            ENGRAVE => "Engrave setting does not match specification",
+            SHADOW => "Shadow setting does not match specification",
+            SUPSCRIPT => "Superscript setting does not match specification",
+            SUBSCRIPT => "Subscript setting does not match specification",
+            SHADOWTYPE => "Shadow type does not match specification",
+            SHADOW_X => "Shadow X offset does not match specification",
+            SHADOW_Y => "Shadow Y offset does not match specification",
+            SHADOW_COLOR => "Shadow color does not match specification",
+            KERNING => "Kerning setting does not match specification",
+
+            PARA_ALIGN => "Paragraph alignment does not match specification",
+            PARA_INDENT => "Paragraph indent does not match specification",
+            PARA_OUTDENT => "Paragraph outdent does not match specification",
+            PARA_LINESPACING => "Line spacing type does not match specification",
+            PARA_LINESPACINGVALUE => "Line spacing value does not match specification",
+            PARA_SPACING_PARAUP => "Paragraph top spacing does not match specification",
+            PARA_SPACING_PARABOTTOM => "Paragraph bottom spacing does not match specification",
+
+            TABLE_WIDTH => "Table width does not match specification",
+            TABLE_HEIGHT => "Table height does not match specification",
+            TABLE_FIXED => "Table size-fixed setting does not match specification",
+            TABLE_TREAT_AS_CHAR => "Table treatAsChar setting does not match specification",
+            TABLE_POS => "Table position (text wrap) does not match specification",
+            TABLE_TEXTPOS => "Table text position (text flow) does not match specification",
+            TABLE_MARGIN_LEFT => "Table left margin does not match specification",
+            TABLE_MARGIN_RIGHT => "Table right margin does not match specification",
+            TABLE_MARGIN_TOP => "Table top margin does not match specification",
+            TABLE_MARGIN_BOTTOM => "Table bottom margin does not match specification",
+            TABLE_CAPTION_POSITION => "Table caption position does not match specification",
+            TABLE_CAPTION_SIZE => "Table caption size does not match specification",
+            TABLE_CAPTION_SPACING => "Table caption spacing does not match specification",
+            TABLE_BGFILL_TYPE => "Table background fill type does not match specification",
+            TABLE_BGFILL_FACECOLOR => "Table background face color does not match specification",
+            TABLE_BGFILL_PATTONCOLOR => {
+                "Table background pattern color does not match specification"
+            }
+            TABLE_BGFILL_PATTONTYPE => "Table background pattern type does not match specification",
+            TABLE_BORDER => "Table border does not match specification",
+            TABLE_BORDER_TYPE => "Table border type does not match specification",
+            TABLE_BORDER_SIZE => "Table border size does not match specification",
+            TABLE_BORDER_COLOR => "Table border color does not match specification",
+            TABLE_IN_TABLE => "Table-in-table is not permitted",
+
+            SPECIAL_CHARACTER => "Character code point outside specification range",
+            SPECIAL_CHAR_MINIMUM => "Character code point below specification minimum",
+            SPECIAL_CHAR_MAXIMUM => "Character code point above specification maximum",
+
+            OUTLINE_NUMBERTYPE => "Outline numbering type does not match specification",
+            OUTLINE_NUMBERSHAPE => "Outline numbering shape does not match specification",
+            BULLET_SHAPES => "Bullet character not in allowed set",
+            PARANUMBULLET_NUMBERTYPE => "Paragraph numbering type does not match specification",
+            PARANUMBULLET_NUMBERSHAPE => "Paragraph numbering shape does not match specification",
+
+            STYLE_PERMISSION => "Style usage is not permitted",
+            HYPERLINK_PERMISSION => "Hyperlink usage is not permitted",
+            MACRO_PERMISSION => "Macro usage is not permitted",
+
             _ => "Rule violation",
         }
     }

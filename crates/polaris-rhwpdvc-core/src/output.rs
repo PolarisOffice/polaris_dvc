@@ -6,8 +6,6 @@
 //! and `errorText` carries the document text at the violation site — not
 //! a human-readable error message.
 
-use serde::{Deserialize, Serialize};
-
 use crate::error_codes::ErrorCode;
 
 /// Output option controlling which conditional fields are emitted.
@@ -40,9 +38,17 @@ impl OutputOption {
 }
 
 /// A single rule-violation record. Field *storage* is unconditional; the
-/// output option controls which fields are *emitted* in serialized JSON via
-/// [`Self::to_json_value`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+/// output option controls which fields are *emitted* in serialized output
+/// via [`Self::to_json_value`] / [`Self::append_xml`].
+///
+/// **No `Serialize` / `Deserialize` derive.** The DVC-compatible wire
+/// format uses `PascalCase` / `camelCase` field names that don't map
+/// mechanically to our snake_case storage — a derived `Serialize` would
+/// emit `char_pr_id_ref` instead of `CharIDRef`, silently diverging from
+/// the contract. All serialization goes through `to_json_value` and
+/// `append_xml`; deserialization is not supported (we write, never read,
+/// this format).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ViolationRecord {
     pub char_pr_id_ref: u32,
     pub para_pr_id_ref: u32,
@@ -63,7 +69,6 @@ pub struct ViolationRecord {
 
     /// Developer-oriented diagnostic string. Not included in DVC-compatible
     /// output (upstream `getErrorString` is internal-only).
-    #[serde(default)]
     pub error_string: String,
 }
 
