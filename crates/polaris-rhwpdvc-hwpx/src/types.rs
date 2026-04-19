@@ -289,6 +289,18 @@ pub struct Table {
     /// Populated from `<hp:inMargin left="..." right="..." top="..." bottom="...">`
     /// — the per-table inner margin ("margin" in DVC spec lingo).
     pub in_margin: TableEdges,
+    /// `textWrap` attribute on `<hp:tbl>` (OWPML enum string like
+    /// `"SQUARE"` / `"TIGHT"` / `"TOP_AND_BOTTOM"` / `"BEHIND_TEXT"` /
+    /// `"IN_FRONT_OF_TEXT"`). Drives DVC's `table.pos` rule
+    /// (`JID_TABLE_POS`).
+    pub text_wrap: String,
+    /// `textFlow` attribute on `<hp:tbl>` (OWPML enum string like
+    /// `"BOTH_SIDES"` / `"LEFT_ONLY"` / `"RIGHT_ONLY"` / `"LARGEST_ONLY"`).
+    /// Drives DVC's `table.textpos` rule (`JID_TABLE_TEXTPOS`).
+    pub text_flow: String,
+    /// `lock="0|1"` attribute on `<hp:tbl>` — fixed-size flag. Drives
+    /// DVC's `table.fixed` rule (`JID_TABLE_SIZEFIXED`).
+    pub lock: bool,
 }
 
 /// `<hp:sz>` (table size). `width_rel_to` / `height_rel_to` are upstream

@@ -79,6 +79,9 @@ impl ErrorCode {
             2010 => "Paragraph bottom spacing does not match specification",
             3001 => "Table width does not match specification",
             3002 => "Table height does not match specification",
+            3003 => "Table size-fixed setting does not match specification",
+            3005 => "Table position (text wrap) does not match specification",
+            3006 => "Table text position (text flow) does not match specification",
             3022 => "Table left margin does not match specification",
             3023 => "Table right margin does not match specification",
             3024 => "Table top margin does not match specification",
@@ -149,6 +152,9 @@ pub mod jid {
     pub const PARA_SHAPE_SPACING_PARABOTTOM: ErrorCode = r::JID_PARA_SHAPE_SPACINGPARABOTTOM;
     pub const TABLE_SIZE_WIDTH: ErrorCode = r::JID_TABLE_SIZEWIDTH;
     pub const TABLE_SIZE_HEIGHT: ErrorCode = r::JID_TABLE_SIZEHEIGHT;
+    pub const TABLE_SIZE_FIXED: ErrorCode = r::JID_TABLE_SIZEFIXED;
+    pub const TABLE_POS: ErrorCode = r::JID_TABLE_POS;
+    pub const TABLE_TEXTPOS: ErrorCode = r::JID_TABLE_TEXTPOS;
     pub const TABLE_BORDER: ErrorCode = r::JID_TABLE_BORDER;
     pub const TABLE_BORDER_TYPE: ErrorCode = r::JID_TABLE_BORDER_TYPE;
     pub const TABLE_BORDER_SIZE: ErrorCode = r::JID_TABLE_BORDER_SIZE;

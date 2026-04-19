@@ -410,6 +410,15 @@ pub struct TableSpec {
     pub treat_as_char: Option<bool>,
     #[serde(rename = "table-in-table")]
     pub table_in_table: Option<bool>,
+    /// `pos` — table wrap/position mode. Upstream `JID_TABLE_POS` (3005).
+    /// Accepts an OWPML enum string (e.g. `"SQUARE"`, `"TOP_AND_BOTTOM"`,
+    /// `"BEHIND_TEXT"`, `"IN_FRONT_OF_TEXT"`). Engine compares
+    /// case-insensitively against the `textWrap` attribute of `<hp:tbl>`.
+    pub pos: Option<String>,
+    /// `textpos` — text-flow alongside table. Upstream `JID_TABLE_TEXTPOS`
+    /// (3006). Values: `"BOTH_SIDES"`, `"LEFT_ONLY"`, `"RIGHT_ONLY"`,
+    /// `"LARGEST_ONLY"`. Compared against `textFlow` on `<hp:tbl>`.
+    pub textpos: Option<String>,
 
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,

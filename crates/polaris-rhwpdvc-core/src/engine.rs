@@ -881,6 +881,63 @@ fn check_table(ctx: &mut Ctx, table: &Table, spec: &TableSpec) -> bool {
         }
     }
 
+    // size-fixed (`lock` attribute on <hp:tbl>).
+    // Upstream JID_TABLE_SIZEFIXED compares `iTable->getSizeFixed() !=
+    // table->getLock()`.
+    if let Some(expected) = spec.size_fixed {
+        if table.lock != expected {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_SIZE_FIXED,
+                format!(
+                    "table {} size-fixed (lock) {} != spec {}",
+                    table.id, table.lock, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    // pos / textpos — string compare against the OWPML enum attribute.
+    // Upstream compares enum ordinals and has a known mismatch between
+    // its PosType (4 values) and OWPML ASOTEXTWRAPTYPE (6 values); our
+    // string-compare is a pragmatic stand-in until that's disambiguated.
+    if let Some(expected) = spec.pos.as_deref() {
+        if !table.text_wrap.eq_ignore_ascii_case(expected) {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_POS,
+                format!(
+                    "table {} textWrap \"{}\" != spec \"{}\"",
+                    table.id, table.text_wrap, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+    if let Some(expected) = spec.textpos.as_deref() {
+        if !table.text_flow.eq_ignore_ascii_case(expected) {
+            let v = table_violation(
+                ctx,
+                table,
+                jid::TABLE_TEXTPOS,
+                format!(
+                    "table {} textFlow \"{}\" != spec \"{}\"",
+                    table.id, table.text_flow, expected
+                ),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
     // margin-left/right/top/bottom — <hp:inMargin> (cellMargin).
     if !check_margin_side(
         ctx,

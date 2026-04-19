@@ -122,6 +122,9 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
                                 "rowCnt" => t.row_cnt = v.parse().unwrap_or(0),
                                 "colCnt" => t.col_cnt = v.parse().unwrap_or(0),
                                 "cellSpacing" => t.cell_spacing = v.parse().unwrap_or(0),
+                                "textWrap" => t.text_wrap = v,
+                                "textFlow" => t.text_flow = v,
+                                "lock" => t.lock = v == "1" || v.eq_ignore_ascii_case("true"),
                                 _ => {}
                             }
                         }

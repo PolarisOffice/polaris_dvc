@@ -213,6 +213,28 @@ pub struct FixTable {
     pub border_fill_id_ref: u32,
     pub row_cnt: u32,
     pub col_cnt: u32,
+    /// `textWrap` attribute. Default: empty string. OWPML values include
+    /// `"SQUARE"` / `"TOP_AND_BOTTOM"` / `"BEHIND_TEXT"` / `"IN_FRONT_OF_TEXT"`.
+    pub text_wrap: String,
+    /// `textFlow` attribute. Default: empty string. OWPML values include
+    /// `"BOTH_SIDES"` / `"LEFT_ONLY"` / `"RIGHT_ONLY"` / `"LARGEST_ONLY"`.
+    pub text_flow: String,
+    /// `lock="0|1"` — size-fixed flag.
+    pub lock: bool,
+}
+
+impl Default for FixTable {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            border_fill_id_ref: 1,
+            row_cnt: 1,
+            col_cnt: 1,
+            text_wrap: String::new(),
+            text_flow: String::new(),
+            lock: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -614,9 +636,23 @@ impl Fixture {
                     "<hp:run charPrIDRef=\"{}\">",
                     p.runs.first().map(|r| r.char_pr_id_ref).unwrap_or(0)
                 ));
+                // Use the fixture's text_wrap/text_flow if set; otherwise
+                // fall back to historical baseline values so existing
+                // goldens stay byte-stable.
+                let tw = if t.text_wrap.is_empty() {
+                    "TOP_AND_BOTTOM"
+                } else {
+                    t.text_wrap.as_str()
+                };
+                let tf = if t.text_flow.is_empty() {
+                    "BOTH_SIDES"
+                } else {
+                    t.text_flow.as_str()
+                };
+                let lk = if t.lock { "1" } else { "0" };
                 s.push_str(&format!(
                     "<hp:tbl id=\"{}\" zOrder=\"0\" numberingType=\"TABLE\" \
-                     textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" \
+                     textWrap=\"{tw}\" textFlow=\"{tf}\" lock=\"{lk}\" \
                      borderFillIDRef=\"{}\" noAdjust=\"0\" rowCnt=\"{}\" \
                      colCnt=\"{}\" cellSpacing=\"0\">\
                      <hp:sz width=\"42520\" widthRelTo=\"ABSOLUTE\" \

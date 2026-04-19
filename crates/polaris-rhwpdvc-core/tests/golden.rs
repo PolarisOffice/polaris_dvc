@@ -231,6 +231,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 2,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -323,6 +324,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 1,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -342,6 +344,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 1,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -366,6 +369,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 1,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -386,6 +390,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 1,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -414,6 +419,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 3,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -503,6 +509,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 1,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
@@ -618,6 +625,60 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // Table pos (textWrap) mismatch. Fixture emits default
+            // TOP_AND_BOTTOM; spec demands SQUARE → JID 3005 fires.
+            name: "34_table_pos_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 700,
+                    ..FixTable::default()
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "pos": "SQUARE" }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Table textpos (textFlow). Fixture default BOTH_SIDES,
+            // spec LEFT_ONLY → JID 3006.
+            name: "35_table_textpos_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 701,
+                    ..FixTable::default()
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "textpos": "LEFT_ONLY" }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Table fixed (lock). Fixture lock=false; spec demands true → 3003.
+            name: "36_table_size_fixed_mismatch",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].table = Some(FixTable {
+                    id: 702,
+                    lock: false,
+                    ..FixTable::default()
+                });
+                f
+            },
+            spec: r#"{
+  "table": { "fixed": true }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Same fixture + spec as 24_table_bgfill_type_mismatch, but
             // the DvcStrict profile filters out JIDs upstream leaves as
             // no-op. bgfill-type is one of those, so expected.json is [].
@@ -630,6 +691,7 @@ fn cases() -> Vec<Case> {
                     border_fill_id_ref: 1,
                     row_cnt: 1,
                     col_cnt: 1,
+                    ..FixTable::default()
                 });
                 f
             },
