@@ -15,6 +15,39 @@ enum Format {
     Xml,
 }
 
+/// Which conditional-field set to emit per violation. Mirrors upstream
+/// `DVCOutputOption` enum (ExportInterface.h:26). Upstream also exposes
+/// these via single-letter flags (`-d` Default, `-o` AllOption, `-t`
+/// Table, `-i` TableDetail, `-p` Shape, `-y` Style, `-k` Hyperlink) but
+/// those collide with spec-file loading (`-t <SPEC>`); we expose one
+/// clean long flag instead.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum OutputOptionArg {
+    Default,
+    All,
+    Table,
+    TableDetail,
+    Style,
+    Shape,
+    Hyperlink,
+}
+
+impl OutputOptionArg {
+    fn to_core(self) -> polaris_rhwpdvc_core::output::OutputOption {
+        use polaris_rhwpdvc_core::output::OutputOption as O;
+        match self {
+            Self::Default => O::Default,
+            Self::All => O::AllOption,
+            Self::Table => O::Table,
+            Self::TableDetail => O::TableDetail,
+            Self::Style => O::Style,
+            Self::Shape => O::Shape,
+            Self::Hyperlink => O::Hyperlink,
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "polaris-rhwpdvc",
@@ -59,6 +92,11 @@ struct Cli {
     /// flag when byte-compat with DVC.exe matters.
     #[arg(long = "dvc-strict")]
     dvc_strict: bool,
+
+    /// Output option — which conditional fields are emitted per
+    /// violation. Mirrors upstream `DVCOutputOption`. Default: `all`.
+    #[arg(long = "output-option", value_enum, default_value = "all")]
+    output_option: OutputOptionArg,
 
     /// HWPX document path, or `-` for stdin.
     #[arg(value_name = "INPUT")]
@@ -125,7 +163,7 @@ fn main() -> ExitCode {
     };
     let report = polaris_rhwpdvc_core::engine::validate(&doc, &spec, &opts);
 
-    let option = polaris_rhwpdvc_core::output::OutputOption::AllOption;
+    let option = cli.output_option.to_core();
     let body: String = match format {
         Format::Json => {
             let payload = report.to_json_value(option);
