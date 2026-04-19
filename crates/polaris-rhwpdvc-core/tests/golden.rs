@@ -681,6 +681,27 @@ fn cases() -> Vec<Case> {
             profile: CheckProfile::Extended,
         },
         Case {
+            // use_style propagation: a charshape violation on a run
+            // that belongs to a paragraph with a non-zero styleIDRef
+            // should carry `UseStyle: true` — regardless of whether
+            // the spec has a `style.permission` rule. Mirrors
+            // upstream OWPMLReader.cpp:304-305 (`isStyle = pPType->
+            // GetStyleIDRef() != 0`) getting threaded through every
+            // DVCErrorInfo.
+            name: "41_charshape_violation_in_styled_paragraph",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.char_prs[0].bold = true;
+                f.paragraphs[0].style_id_ref = 5; // non-zero → isStyle
+                f
+            },
+            spec: r#"{
+  "charshape": { "bold": false }
+}
+"#,
+            profile: CheckProfile::Extended,
+        },
+        Case {
             // Footnote scope tracking. Run inside <hp:footnote>; fixture
             // bold=true vs spec bold=false fires 1009. Run gets
             // `is_in_footnote=true` internally, but upstream has no JID

@@ -272,28 +272,30 @@ fn check_paragraph(ctx: &mut Ctx, paragraph: &Paragraph, spec: &RuleSpec) -> boo
         }
 
         if style_forbidden && paragraph.style_id_ref != 0 {
-            let mut v = violation_for(
+            // `use_style` is populated by `violation_for` from
+            // `paragraph.style_id_ref != 0`; no manual override needed.
+            let v = violation_for(
                 ctx,
                 paragraph,
                 run,
                 jid::STYLE_PERMISSION,
                 format!("style id {} used but not permitted", paragraph.style_id_ref),
             );
-            v.use_style = true;
             if !ctx.push(v) {
                 return false;
             }
         }
 
         if hyperlink_forbidden && run.is_hyperlink {
-            let mut v = violation_for(
+            // `use_hyperlink` is populated by `violation_for` from
+            // `run.is_hyperlink`.
+            let v = violation_for(
                 ctx,
                 paragraph,
                 run,
                 jid::HYPERLINK_PERMISSION,
                 "hyperlink run found but not permitted".to_string(),
             );
-            v.use_hyperlink = true;
             if !ctx.push(v) {
                 return false;
             }
@@ -1393,13 +1395,17 @@ fn violation_for(
         page_no: ctx.page_no,
         line_no: ctx.line_no,
         error_code: code,
-        // Propagate scope flags from the run so output's
-        // `IsInShape` / `UseHyperlink` reflect what upstream would
-        // have recorded. Footnote/endnote scopes are tracked on the
-        // run but have no corresponding DVC output field; they're
-        // available to internal consumers via the `Run` struct.
+        // Propagate scope flags so the output's `IsInShape` /
+        // `UseHyperlink` / `UseStyle` fields reflect what upstream
+        // would have recorded from the run's RunTypeInfo:
+        //   - isInShape:  set by parser per run (shape scope stack)
+        //   - isHyperlink: set by parser per run (field-scope stack)
+        //   - isStyle:    true iff the paragraph carries a non-zero
+        //                 styleIDRef (upstream
+        //                 `OWPMLReader.cpp:304-305`).
         is_in_shape: run.is_in_shape,
         use_hyperlink: run.is_hyperlink,
+        use_style: paragraph.style_id_ref != 0,
         error_string: diagnostic,
         ..ViolationRecord::new(code)
     }
