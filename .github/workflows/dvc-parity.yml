@@ -1,0 +1,177 @@
+name: DVC parity (Windows)
+
+# Builds upstream `hancom-io/dvc` on a Windows runner and runs the
+# resulting ExampleWindows.exe against every fixture under
+# `testdata/golden/`. Outputs are uploaded as artifacts and soft-diffed
+# against our committed `expected.json` so we can see where polaris'
+# engine diverges from DVC.exe without blocking the main CI pipeline.
+#
+# Manual-trigger (workflow_dispatch) + runs on pushes to main only.
+# The first iterations are expected to fail at the build step — this is
+# a research task, not a blocker.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream hancom-io/dvc ref to build (branch/tag/SHA)"
+        default: "main"
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dvc-parity.yml"
+      - "scripts/diff-dvc-outputs.sh"
+      - "testdata/golden/**"
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    name: Build DVC.exe and diff against fixtures
+    runs-on: windows-latest
+    # Research job — we want the artifact upload to happen even when the
+    # build or the diff surfaces divergences.
+    continue-on-error: true
+    env:
+      UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+    steps:
+      - name: Checkout polaris
+        uses: actions/checkout@v4
+        with:
+          path: polaris
+
+      - name: Checkout upstream hancom-io/dvc
+        uses: actions/checkout@v4
+        with:
+          repository: hancom-io/dvc
+          ref: ${{ env.UPSTREAM_REF }}
+          path: dvc
+
+      - name: Fetch OSS dependencies
+        shell: bash
+        # Replicates upstream `update_oss.bat` but clones the public repos
+        # without an auth token (the bat wraps them with a PAT solely to
+        # work around corporate network policies). Also fixes the bat's
+        # bug where the jsoncpp reset is performed inside the rapidjson
+        # directory.
+        run: |
+          set -euo pipefail
+          cd dvc
+          mkdir -p opensource
+          cd opensource
+          echo "::group::hwpx-owpml-model"
+          git clone --depth 1 https://github.com/hancom-io/hwpx-owpml-model.git
+          echo "::endgroup::"
+          echo "::group::rapidjson"
+          git clone https://github.com/Tencent/rapidjson.git
+          git -C rapidjson reset --hard 8261c1ddf43f10de00fd8c9a67811d1486b2c784
+          echo "::endgroup::"
+          echo "::group::jsoncpp"
+          git clone https://github.com/open-source-parsers/jsoncpp.git
+          git -C jsoncpp reset --hard 8190e061bc2d95da37479a638aa2c9e483e58ec6
+          echo "::endgroup::"
+
+      - name: Amalgamate jsoncpp
+        shell: cmd
+        # jsoncpp's Visual Studio build path uses the amalgamated single
+        # header + source produced by this python script. Do it here so
+        # msbuild finds the files where the .vcxproj expects them.
+        run: |
+          cd dvc\opensource\jsoncpp
+          python amalgamate.py || echo "amalgamate.py failed — job will likely fail downstream"
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install VS2017 v141 toolset (if missing)
+        shell: pwsh
+        # windows-latest (windows-2022 / windows-2025 image) ships VS2022
+        # but `v141` may not be pre-installed. Install via vs_installer.
+        run: |
+          $vs = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise'
+          if (Test-Path "$vs\VC\Tools\MSVC") {
+            $v141 = Get-ChildItem "$vs\VC\Tools\MSVC" | Where-Object { $_.Name -like '14.16.*' }
+            if ($null -ne $v141) {
+              Write-Host "v141 already present: $($v141.Name)"
+              exit 0
+            }
+          }
+          Write-Host "Installing v141 platform toolset..."
+          $installer = "$vs\Common7\Tools\vsdevcmd.bat"
+          Start-Process -Wait -NoNewWindow -FilePath 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe' `
+            -ArgumentList @(
+              'modify',
+              '--installPath', $vs,
+              '--add', 'Microsoft.VisualStudio.Component.VC.v141.x86.x64',
+              '--quiet', '--norestart', '--nocache'
+            )
+
+      - name: Build DVCModel + ExampleWindows (x64 Release)
+        shell: cmd
+        run: |
+          cd dvc
+          msbuild DVCModel.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+
+      - name: Locate ExampleWindows.exe
+        id: find-exe
+        shell: bash
+        run: |
+          set -eu
+          exe=$(find dvc -type f -name 'ExampleWindows.exe' | head -1)
+          echo "exe=$exe" >> "$GITHUB_OUTPUT"
+          echo "Found: $exe"
+
+      - name: Run DVC against each golden fixture
+        shell: bash
+        env:
+          DVC_EXE: ${{ steps.find-exe.outputs.exe }}
+        run: |
+          set -u
+          mkdir -p polaris/testdata/golden/_dvc-output
+          for case in polaris/testdata/golden/*/; do
+            name=$(basename "$case")
+            [[ "$name" = "_dvc-output" ]] && continue
+            [[ ! -f "$case/doc.hwpx" ]] && continue
+            out="polaris/testdata/golden/_dvc-output/${name}.json"
+            echo "::group::$name"
+            "$DVC_EXE" -j -a \
+              "--file=$out" \
+              "-t" "$case/spec.json" \
+              "$case/doc.hwpx" \
+              || echo "DVC exited non-zero for $name (may be intentional per rule violations)"
+            echo "---"
+            if [[ -f "$out" ]]; then
+              cat "$out"
+            else
+              echo "(no output file produced)"
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Soft-diff DVC output vs committed expected.json
+        shell: bash
+        run: |
+          cd polaris
+          bash scripts/diff-dvc-outputs.sh testdata/golden testdata/golden/_dvc-output \
+            | tee testdata/golden/_dvc-output/_diff-summary.txt
+
+      - name: Upload DVC outputs + diff summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dvc-parity-outputs-${{ github.run_id }}
+          path: |
+            polaris/testdata/golden/_dvc-output/
+          if-no-files-found: warn
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msbuild-logs-${{ github.run_id }}
+          path: |
+            dvc/**/*.log
+            dvc/**/BuildLog.htm
+          if-no-files-found: ignore
