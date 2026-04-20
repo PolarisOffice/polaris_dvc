@@ -37,6 +37,10 @@ on:
         description: "Upstream hancom-io/dvc ref (branch/tag/SHA)"
         default: "main"
         required: false
+      reuse_artifact_from_run:
+        description: "Skip build and reuse binary from this run ID (90-day retention). Leave empty for a fresh build."
+        required: false
+        default: ""
   push:
     branches: [main]
     paths:
@@ -46,11 +50,15 @@ on:
 
 permissions:
   contents: read
+  actions: read   # needed to pull artifacts from prior runs via download-artifact@v4
 
 jobs:
   build:
     name: Build DVC binary set (Release / Win32 / v143)
     runs-on: windows-latest
+    # Skip the ~7-minute build when the user points `reuse_artifact_from_run`
+    # at a prior run. The parity job then downloads from that run_id instead.
+    if: ${{ inputs.reuse_artifact_from_run == '' }}
     env:
       UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
     outputs:
@@ -368,16 +376,51 @@ jobs:
   parity:
     name: Run DVC against golden fixtures
     needs: build
+    # `always()` lets parity proceed even when build is SKIPPED via
+    # `reuse_artifact_from_run`. We still need to bail if build ran
+    # and FAILED, so gate explicitly on non-failure.
+    if: ${{ always() && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
     runs-on: windows-latest
     steps:
       - name: Checkout polaris
         uses: actions/checkout@v4
 
+      - name: Resolve artifact source (fresh build vs reused run)
+        id: art
+        shell: bash
+        # Two modes:
+        #   fresh build  -> artifact name from build job's output,
+        #                   run_id = this run's id
+        #   reused run   -> artifact name follows the same template
+        #                   we use in the upload step of the build job
+        #                   (`dvc-windows-x86-<run_id>`); run_id is
+        #                   the one the user passed.
+        run: |
+          set -euo pipefail
+          reuse='${{ inputs.reuse_artifact_from_run }}'
+          if [[ -n "$reuse" ]]; then
+              name="dvc-windows-x86-${reuse}"
+              run_id="$reuse"
+              echo "mode=reuse (run $run_id)"
+          else
+              name='${{ needs.build.outputs.artifact_name }}'
+              run_id='${{ github.run_id }}'
+              echo "mode=fresh build (run $run_id)"
+          fi
+          echo "artifact_name=$name" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
       - name: Download DVC binary artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.build.outputs.artifact_name }}
+          name: ${{ steps.art.outputs.artifact_name }}
           path: dvc-bin
+          # `run-id` + `github-token` together let us pull from ANY
+          # prior run's artifact in this repo (subject to retention).
+          # When `run-id` equals the current run, this behaves the
+          # same as omitting both fields.
+          run-id: ${{ steps.art.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List artifact contents
         shell: pwsh
