@@ -101,29 +101,42 @@ jobs:
               fi
           done
 
-      - name: Install jsoncpp via vcpkg + patch vcxproj paths
+      - name: Build pinned jsoncpp as static lib (upstream-canonical)
         shell: pwsh
+        # Background: previous iterations installed jsoncpp through
+        # vcpkg (dynamic x86-windows). Build succeeded, binary loaded,
+        # no-args smoke printed "Hello World!" cleanly — but every
+        # args-bearing invocation crashed with 0xC0000005 immediately
+        # after entering `setCommand(argv)`, the place where DVCModel
+        # first reaches into jsoncpp to parse spec.json. Classic signal
+        # of ABI skew between the jsoncpp headers DVCModel compiled
+        # against and the jsoncpp.dll it loaded at runtime.
+        #
+        # Upstream's `update_oss.bat` pins a specific jsoncpp commit
+        # (8190e061bc2d95da37479a638aa2c9e483e58ec6) and expects a
+        # static lib at `./opensource/jsoncpp/json_git/lib/Release/
+        # jsoncpp.lib` — the DVCModel.vcxproj include/lib paths already
+        # point there. We just need to actually run the build.
         run: |
-          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-          if (-not $vcpkgRoot) { $vcpkgRoot = 'C:\vcpkg' }
-          & "$vcpkgRoot\vcpkg" install jsoncpp:x86-windows --recurse
-          $pkg = "$vcpkgRoot\packages\jsoncpp_x86-windows"
-          $include = Join-Path $pkg 'include'
-          $includeJson = Join-Path $pkg 'include\json'
-          $lib = Join-Path $pkg 'lib'
-          if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
-          if (!(Test-Path $lib)) { throw "missing: $lib" }
-          $bothInc = "$include;$includeJson"
-          $vcxproj = 'dvc\DVCModel.vcxproj'
-          $text = Get-Content $vcxproj -Raw
-          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $bothInc
-          $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', $lib
-          $text = $text -replace '\./opensource/jsoncpp/include/json', $bothInc
-          $text = $text -replace '\./opensource/jsoncpp/json_git/lib/Release', $lib
-          Set-Content -Path $vcxproj -Value $text -NoNewline
-          # Expose the vcpkg package dir downstream so runtime DLL
-          # staging can find it.
-          "VCPKG_PKG_DIR=$pkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Push-Location dvc\opensource\jsoncpp
+          cmake -G "Visual Studio 17 2022" -A Win32 -B json_git `
+                -DJSONCPP_WITH_TESTS=OFF `
+                -DBUILD_SHARED_LIBS=OFF `
+                -DJSONCPP_STATIC_WINDOWS_RUNTIME=OFF
+          cmake --build json_git --config Release --target jsoncpp_static
+          # cmake_static_targets name varies across jsoncpp versions;
+          # the pinned commit uses `jsoncpp_static` producing
+          # `json_git\src\lib_json\Release\jsoncpp_static.lib`. We need
+          # it at the path the vcxproj expects: `json_git\lib\Release\
+          # jsoncpp.lib`.
+          New-Item -ItemType Directory -Force -Path 'json_git\lib\Release' | Out-Null
+          $src = Get-ChildItem -Path 'json_git' -Recurse -Filter '*.lib' |
+            Where-Object { $_.Name -match 'jsoncpp' } |
+            Select-Object -First 1
+          if (-not $src) { throw "jsoncpp static lib not found after cmake build" }
+          Write-Host "found lib: $($src.FullName)"
+          Copy-Item $src.FullName 'json_git\lib\Release\jsoncpp.lib' -Force
+          Pop-Location
 
       - name: Detect installed Windows SDK
         id: sdk
@@ -170,29 +183,15 @@ jobs:
             }
           }
 
-      - name: Stage runtime DLLs next to ExampleWindows.exe
+      - name: Inspect dvc\Release\ contents
         shell: pwsh
-        # Goal: make dvc\Release\ a self-contained directory — any DLL
-        # the exe needs at load time must live here. Vcpkg's packages
-        # dir separates static libs (`lib/`) from runtime DLLs (`bin/`);
-        # triplet x86-windows defaults to dynamic linking so jsoncpp.dll
-        # ships in bin/. We copy those + probe common MSVC runtime DLLs.
+        # Static-linked jsoncpp → no runtime DLL staging needed. Just
+        # sanity-check the build output.
         run: |
           if (-not (Test-Path "dvc\Release\ExampleWindows.exe")) {
-            throw "Build didn't produce ExampleWindows.exe — abort staging"
+            throw "Build didn't produce ExampleWindows.exe"
           }
-          $pkgBin = Join-Path $env:VCPKG_PKG_DIR 'bin'
-          if (Test-Path $pkgBin) {
-            Write-Host "Copying runtime DLLs from vcpkg bin: $pkgBin"
-            Get-ChildItem "$pkgBin\*.dll" | ForEach-Object {
-              Copy-Item $_.FullName "dvc\Release\" -Force
-              Write-Host "  staged: $($_.Name) ($($_.Length) bytes)"
-            }
-          } else {
-            Write-Host "No $pkgBin — static-linked build, skipping runtime DLL copy"
-          }
-          Write-Host "---"
-          Write-Host "Final dvc\Release\ contents:"
+          Write-Host "dvc\Release\ contents:"
           Get-ChildItem "dvc\Release\" | Select-Object Name, Length |
             Format-Table -AutoSize
 
