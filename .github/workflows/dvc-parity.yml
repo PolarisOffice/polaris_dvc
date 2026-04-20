@@ -94,39 +94,65 @@ jobs:
           git clone --depth 1 https://github.com/open-source-parsers/jsoncpp.git
           echo "::endgroup::"
 
-      - name: Patch CheckList.cpp null-terminator off-by-one (upstream bug)
+      - name: Patch CheckList.cpp upstream bugs (null-terminator + end() check)
         shell: bash
-        # Root cause of every prior 0xC0000005 crash on non-empty specs.
+        # Two separate upstream C++ bugs, both in `Source/CheckList.cpp`
+        # :parsing(). Run #26 proved fix A alone wasn't enough — the
+        # crash survived. Run #25 probe 5 diagnosis + sanity-diffing
+        # spec vs map keys revealed fix B as the actual cause.
         #
-        # Upstream `Source/CheckList.cpp:90-95`:
-        #     buffer = new char[size + 1];   // +1 intended for NUL
-        #     memset(buffer, 0, size);       // <-- BUG: only zeros [0..size-1]
-        #     fread(buffer, size, 1, fp);    //        buffer[size] stays
-        #                                    //        indeterminate.
-        #     ...
-        #     reader.parse(buffer, root);    // char* -> std::string(buffer)
-        #                                    // which calls strlen(buffer).
+        # --- Fix A: null-terminator off-by-one ---
+        # Line 90-92:  new char[size+1]; memset(...,size); fread(...,size,...)
+        # leaves buffer[size] indeterminate. Then reader.parse(buffer,root)
+        # constructs std::string(buffer) via strlen — which reads past
+        # the allocation. Real latent UB; Release heap happens to zero
+        # small allocations but not 27KB ones. Kept defensively.
         #
-        # std::string(const char*) requires a null-terminated input.
-        # With `{}` (2 bytes), buffer[2] coincidentally reads as 0 from
-        # a fresh small heap allocation → strlen returns 2 → parse OK.
-        # With the 27KB jsonFullSpec, buffer[27056] is not 0 → strlen
-        # walks past the allocation, into unmapped memory → access
-        # violation, exit -1073741819.
+        # --- Fix B: missing end() check (the ACTUAL crash) ---
+        # Line 107-109:
+        #     mapIter = checkListMapData.find(members[i]);
+        #     switch (mapIter->second)         // <-- UB if end()
         #
-        # The fix is one character: zero the full size+1 bytes.
+        # `sample/jsonFullSpec.json` has 22 top-level keys; the static
+        # `checkListMapData` in CheckList.cpp only registers 21 of them
+        # ("objproperty" + several others). When the parse loop hits
+        # `objproperty` as the 4th member, find returns end(), and
+        # `mapIter->second` dereferences past-the-end → access
+        # violation. Identified by enumerating both sets and diffing.
+        #
+        # Fix: guard with `if (mapIter == end()) continue;` before
+        # the switch. Skips unrecognized keys cleanly.
         run: |
           set -euo pipefail
           file="dvc/Source/CheckList.cpp"
-          before=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
-          echo "instances before patch: $before"
+
+          echo "--- applying fix A (null-terminator) ---"
+          a_before=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
           sed -i 's|memset(buffer, 0, size);|memset(buffer, 0, size + 1);|' "$file"
-          after=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
-          echo "instances after patch:  $after"
-          echo "patched line:"
-          grep -n 'memset(buffer' "$file"
-          if [[ "$before" != "1" ]] || [[ "$after" != "0" ]]; then
-              echo "::error::CheckList.cpp patch did not apply as expected (upstream may have fixed this; remove this step)"
+          a_after=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
+          echo "  before=$a_before after=$a_after"
+
+          echo "--- applying fix B (end() check) ---"
+          b_target='switch (mapIter->second)'
+          b_before=$(grep -c "$b_target" "$file" || true)
+          # Insert the guard on its own line immediately before the switch,
+          # matching the switch's 12-space indentation.
+          sed -i '/switch (mapIter->second)/i\
+            if (mapIter == checkListMapData.end()) continue;' "$file"
+          b_guards=$(grep -c 'mapIter == checkListMapData.end()) continue' "$file" || true)
+          b_switch_after=$(grep -c "$b_target" "$file" || true)
+          echo "  switches before=$b_before  switches after=$b_switch_after  guards=$b_guards"
+
+          echo "--- patched lines ---"
+          grep -n 'memset(buffer\|mapIter == checkListMapData\|switch (mapIter' "$file"
+
+          # Fail loudly if either sed didn't land as expected.
+          if [[ "$a_before" != "1" ]] || [[ "$a_after" != "0" ]]; then
+              echo "::error::fix A did not apply"
+              exit 1
+          fi
+          if [[ "$b_before" != "1" ]] || [[ "$b_switch_after" != "1" ]] || [[ "$b_guards" != "1" ]]; then
+              echo "::error::fix B did not apply"
               exit 1
           fi
 
