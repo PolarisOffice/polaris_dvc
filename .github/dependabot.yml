@@ -1,0 +1,57 @@
+# Dependabot configuration for polaris_rhwpdvc.
+#
+# Watches two ecosystems:
+#   1. cargo — the 5-crate workspace's direct dependencies.
+#   2. github-actions — the workflow-pinned action versions.
+#
+# Weekly cadence (Monday morning KST) keeps PR noise low while still
+# catching security advisories within a week of publication. GitHub
+# also opens security-only PRs immediately regardless of schedule
+# when a CVE affects the pinned version.
+#
+# Grouping: minor + patch updates of the same ecosystem are batched
+# into one PR per week, so we don't get 8 separate "bump foo 1.2 ->
+# 1.3" PRs. Major bumps stay individual — they usually need manual
+# review anyway.
+
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "cargo"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
