@@ -188,8 +188,8 @@ function Invoke-Probe {
     param(
         [Parameter(Mandatory)] [string] $Label,
         [Parameter(Mandatory)] [string] $Doc,
-        [Parameter(Mandatory)] [string] $OutJson,
         [Parameter(Mandatory)] [string] $SpecPath,
+        [AllowEmptyString()] [string] $OutJson = '',
         [string[]] $Flags = @('-j', '-o')
     )
     Write-Host "::group::$Label"
