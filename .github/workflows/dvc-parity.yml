@@ -253,21 +253,45 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length
 
+      - name: Single-fixture probe (cmd.exe, combined stream)
+        shell: cmd
+        # Smoke check #1 at the parity-job level — prior iterations
+        # showed the bare smoke step (no args) prints "Hello World!"
+        # cleanly under cmd.exe but *Start-Process* with args gave an
+        # access-violation exit (0xC0000005) and empty stdout/stderr.
+        # Reproduce the arg-bearing path here under cmd.exe first to
+        # isolate whether the crash is invocation-mechanism-specific.
+        continue-on-error: true
+        run: |
+          for /f "delims=" %%X in ('dir /b /s "dvc-bin\ExampleWindows.exe"') do set EXE=%%X
+          echo using: %EXE%
+          set DOC=testdata\golden\01_clean\doc.hwpx
+          set SPEC=testdata\golden\01_clean\spec.json
+          set OUT=testdata\golden\_dvc-output\01_clean.probe.json
+          mkdir testdata\golden\_dvc-output 2>nul
+          echo --- running with args ---
+          "%EXE%" -j "--file=%OUT%" -t "%SPEC%" "%DOC%" > probe.stdout.txt 2> probe.stderr.txt
+          echo exit_code=%errorlevel%
+          echo --- probe.stdout.txt ---
+          type probe.stdout.txt
+          echo --- probe.stderr.txt ---
+          type probe.stderr.txt
+          if exist "%OUT%" (echo --- output file produced --- & type "%OUT%") else (echo no output file)
+
       - name: Run DVC against each golden fixture
         shell: pwsh
         # Per-invocation bookkeeping:
-        #   - exit code captured via $p.ExitCode
-        #   - stderr redirected to <case>.stderr.log
-        #   - stdout to <case>.stdout.log
-        #   - the engine's JSON result (if produced) to <case>.json
-        # `Start-Process` (over bash) because `wmain` on Windows gets
-        # argv via UTF-16 directly when launched this way — no Git-Bash
-        # narrow→wide conversion issues on Hangul paths / content.
+        #   - exit code captured via $LASTEXITCODE
+        #   - combined stdout+stderr via `*>&1` so a crash between
+        #     "Hello World!" print and buffer flush still captures
+        #     anything the CRT wrote to stderr during teardown
+        # Use `&` (call operator) instead of Start-Process — the prior
+        # Start-Process variant crashed uniformly with 0xC0000005 on
+        # every fixture and lost the "Hello World!" print; smoke test
+        # under cmd.exe printed it fine. Leaving the invocation to
+        # PowerShell's native process-spawning path avoids whatever
+        # Start-Process was breaking.
         run: |
-          # download-artifact@v4 unpacks into a per-artifact subdirectory
-          # (dvc-bin/<artifact-name>/...), so resolve the exe dynamically
-          # instead of hardcoding a path that would break whenever the
-          # artifact name changes.
           $exeItem = Get-ChildItem -Path "dvc-bin" -Recurse -Filter "ExampleWindows.exe" | Select-Object -First 1
           if (-not $exeItem) { throw "ExampleWindows.exe not found under dvc-bin/" }
           $exe = $exeItem.FullName
@@ -282,23 +306,13 @@ jobs:
             $doc = Join-Path $case.FullName "doc.hwpx"
             $spec = Join-Path $case.FullName "spec.json"
             $out = Join-Path $outDir "$name.json"
-            $stderrLog = Join-Path $outDir "$name.stderr.log"
-            $stdoutLog = Join-Path $outDir "$name.stdout.log"
+            $log = Join-Path $outDir "$name.log"
             Write-Host "::group::$name"
-            $p = Start-Process -FilePath $exe `
-                               -ArgumentList @("-j", "--file=$out", "-t", $spec, $doc) `
-                               -NoNewWindow -Wait -PassThru `
-                               -RedirectStandardOutput $stdoutLog `
-                               -RedirectStandardError $stderrLog
-            Write-Host "exit_code=$($p.ExitCode)"
-            if (Test-Path $stdoutLog) {
-              $content = Get-Content $stdoutLog -Raw
-              if ($content) { Write-Host "--- stdout ---"; Write-Host $content }
-            }
-            if (Test-Path $stderrLog) {
-              $content = Get-Content $stderrLog -Raw
-              if ($content) { Write-Host "--- stderr ---"; Write-Host $content }
-            }
+            $combined = & $exe -j "--file=$out" -t $spec $doc 2>&1
+            $rc = $LASTEXITCODE
+            $combined | Out-File -FilePath $log -Encoding utf8
+            Write-Host "exit_code=$rc"
+            if ($combined) { Write-Host "--- output ---"; $combined | ForEach-Object { Write-Host $_ } }
             if (Test-Path $out) {
               Write-Host "--- output.json ---"
               Get-Content $out
