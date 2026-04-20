@@ -1,29 +1,34 @@
 name: DVC parity (Windows)
 
-# Build upstream hancom-io/dvc on a Windows runner following the
-# **exact recipe** from upstream's README, run the resulting binary
+# Build upstream hancom-io/dvc on a Windows runner, run the binary
 # against every fixture under `testdata/golden/`, and publish the
 # binary set as a reusable artifact.
 #
-# Prior iterations of this workflow piled up workaround after
-# workaround (v143 retarget, x86 fallback, vcpkg jsoncpp, PCH sed
-# patches, vcxproj path rewrites). Each was needed because the build
-# didn't exist — yet each moved us further from what upstream devs
-# actually ship. The result was binaries that loaded cleanly but
-# crashed inside `setCommand(argv)` with 0xC0000005 whenever the user
-# passed any arguments, almost certainly from ABI skew between DVC's
-# compile-time jsoncpp headers and whatever runtime jsoncpp.dll we'd
-# stuffed in.
+# The build recipe is the one upstream's DVCModel.vcxproj actually
+# describes for **Debug|Win32** (the only platform/config combination
+# with a complete, coherent AdditionalIncludeDirectories set across
+# every sub-project). We build **Release|Win32** — upstream's
+# Release|Win32 has the same project layout and compiles fine, but
+# at some point someone swapped its jsoncpp paths from
+# `./opensource/jsoncpp/...` (CMake-from-source, which is what the
+# upstream README walks through) to
+# `./opensource/vcpkg/packages/jsoncpp_x86-windows/...` (a private
+# developer layout that CI never populates). That path swap is the
+# single reason every CI attempt was crashing with 0xC0000005 inside
+# `setCommand(argv)`: the vcpkg jsoncpp version installed on the
+# runner had a different class layout than whatever jsoncpp headers
+# the prior dev's build compiled against. We rewrite those four
+# paths back to the CMake-from-source layout — matching upstream's
+# Debug|Win32 config exactly — and build the pinned jsoncpp source
+# into the expected location.
 #
-# This rewrite matches upstream's published build (README):
-#   - Visual Studio 2017 (v141) toolset — installed on top of the
-#     runner's VS2022 via VS Installer
-#   - Win64 (x64) platform
-#   - jsoncpp built from source as `jsoncpp_lib` (shared DLL) via
-#     CMake, left at the paths DVCModel.vcxproj expects by default
-#   - Zero vcxproj patching — if the binary doesn't build this way,
-#     upstream shouldn't be able to build it either, and we learn
-#     something real.
+# Why not x64 or v141: upstream's Release|x64 ItemDefinitionGroup is
+# literally empty (no AdditionalIncludeDirectories at all) and
+# OWPMLApi.vcxproj's x64 configs are likewise incomplete — upstream
+# devs apparently don't build x64 despite what the README says.
+# v141 toolset install via VS Installer fails on windows-latest
+# (exit 1, no actionable diagnostic). Sticking with Win32 + v143 +
+# the OWPML PCH compat shim keeps us on well-trodden ground.
 
 on:
   workflow_dispatch:
@@ -44,7 +49,7 @@ permissions:
 
 jobs:
   build:
-    name: Build DVC binary set (v143 / x64, near-upstream recipe)
+    name: Build DVC binary set (Release / Win32 / v143)
     runs-on: windows-latest
     env:
       UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
@@ -58,14 +63,13 @@ jobs:
           ref: ${{ env.UPSTREAM_REF }}
           path: dvc
 
-      - name: Fetch OSS dependencies
+      - name: Fetch OSS dependencies (hwpx-owpml-model, rapidjson, jsoncpp)
         shell: bash
-        # Upstream's `update_oss.bat` requires a GitHub token argument
-        # and has a typo on the jsoncpp reset (line 58: `cd rapidjson`
-        # instead of `cd jsoncpp`) that silently leaves jsoncpp
-        # unpinned. We replicate the *intent* (clone + pin rapidjson,
-        # clone jsoncpp at HEAD) without the bat's bugs and without
-        # a token.
+        # Replicates upstream's `update_oss.bat` minus (1) the GitHub
+        # token argument and (2) a typo at line 58 (`cd rapidjson`
+        # where it meant `cd jsoncpp`) that silently leaves jsoncpp
+        # unpinned. We take jsoncpp at HEAD, matching upstream's
+        # effective behavior.
         run: |
           set -euo pipefail
           cd dvc
@@ -79,22 +83,18 @@ jobs:
           git -C rapidjson reset --hard 8261c1ddf43f10de00fd8c9a67811d1486b2c784
           echo "::endgroup::"
           echo "::group::jsoncpp"
-          # Matches upstream's effective behavior (bat pins but fails
-          # silently). Using HEAD keeps our build on the same codebase
-          # upstream devs would land on running update_oss.bat today.
           git clone --depth 1 https://github.com/open-source-parsers/jsoncpp.git
           echo "::endgroup::"
 
       - name: Disable stdafx PCH in OWPML vcxprojs (v143 compat shim)
         shell: bash
-        # OWPML's vcxprojs were written against v141, which auto-
-        # recognized `stdafx.h` as the PCH entry point. v143 defaults
-        # `PrecompiledHeaderFile` to `pch.h` and refuses to include
-        # `stdafx.h`, producing a wall of C1010 ("unexpected end of
-        # file while looking for precompiled header"). Flipping the
-        # PCH setting to NotUsing in the OWPML subproject vcxprojs
-        # sidesteps this without changing any source. DVCModel uses
-        # `pch.h` natively (its own PCH pair) and is left untouched.
+        # OWPML's sub-project vcxprojs were authored against v141,
+        # which auto-recognized `stdafx.h` as the PCH entry point.
+        # v143 defaults `PrecompiledHeaderFile` to `pch.h` and
+        # produces C1010 ("unexpected end of file while looking for
+        # precompiled header") for every OWPML source. Flip the PCH
+        # setting to NotUsing for the OWPML subprojects only —
+        # DVCModel itself uses pch.h natively and is left alone.
         run: |
           set -euo pipefail
           cd dvc/opensource/hwpx-owpml-model
@@ -127,48 +127,92 @@ jobs:
           Write-Host "Using Windows SDK: $ver"
           "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build jsoncpp as shared lib (CMake / x64)
+      - name: Build pinned jsoncpp as shared DLL (Win32 / Release / v143)
         shell: pwsh
-        # Upstream README:
-        #   opensource\jsoncpp\cmake CMakeLists.txt -B json_git -G "Visual Studio 15 2017 Win64"
-        #   open jsoncpp.sln → build jsoncpp_lib project → confirm jsoncpp.dll + lib
-        #
-        # x64 via `-A x64`. Shared DLL via BUILD_SHARED_LIBS=ON, which
-        # matches the README's `jsoncpp_lib` target. We use the
-        # runner's default toolset (v143) — tried Path A (install
-        # v141 matching upstream's README) but VS Installer modify
-        # failed with exit 1 on windows-latest; falling back to v143
-        # + x64 + shared jsoncpp. If this still crashes inside
-        # setCommand, we'll need a more involved v141 install path.
+        # Upstream README walks through:
+        #   `cmake CMakeLists.txt -B json_git -G "Visual Studio 15 2017 Win64"`
+        #   → open jsoncpp.sln → build `jsoncpp_lib` → confirm
+        #     jsoncpp.dll + lib.
+        # We swap Win64 for Win32 (matches the Platform=x86 msbuild
+        # later) and target VS2022's v143 generator (v141 isn't
+        # installable on windows-latest). BUILD_SHARED_LIBS=ON emits
+        # both the import lib and a runtime DLL — the DLL goes next
+        # to ExampleWindows.exe during the stage step below; the
+        # import lib feeds DVCModel's Release|Win32 link step via
+        # the vcxproj's `./opensource/jsoncpp/json_git/lib/Release`
+        # AdditionalLibraryDirectories (populated by the copy at the
+        # end of this step).
         run: |
           Push-Location dvc\opensource\jsoncpp
-          cmake -G "Visual Studio 17 2022" -A x64 -B json_git `
+          cmake -G "Visual Studio 17 2022" -A Win32 -B json_git `
                 -DJSONCPP_WITH_TESTS=OFF `
                 -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF `
                 -DBUILD_SHARED_LIBS=ON `
                 -DJSONCPP_STATIC_WINDOWS_RUNTIME=OFF
-          cmake --build json_git --config Release --target jsoncpp_lib
-          Write-Host "---"
-          Write-Host "jsoncpp build outputs:"
+          cmake --build json_git --config Release
+          Write-Host "--- jsoncpp build outputs ---"
           Get-ChildItem -Recurse -Path json_git -Include *.dll,*.lib |
             Select-Object FullName, Length |
             Format-Table -AutoSize
+          # Stage the import lib at the exact path DVCModel.vcxproj
+          # expects (`./opensource/jsoncpp/json_git/lib/Release/
+          # jsoncpp.lib`) regardless of where CMake wrote it.
+          $target = Join-Path (Get-Location).Path 'json_git\lib\Release\jsoncpp.lib'
+          New-Item -ItemType Directory -Force -Path 'json_git\lib\Release' | Out-Null
+          if (-not (Test-Path $target)) {
+            $src = Get-ChildItem -Path json_git -Recurse -Filter '*.lib' |
+              Where-Object { $_.Name -match 'jsoncpp' } |
+              Select-Object -First 1
+            if (-not $src) { throw "jsoncpp.lib not found after CMake build" }
+            Write-Host "Staging import lib: $($src.FullName) -> $target"
+            Copy-Item $src.FullName $target -Force
+          } else {
+            Write-Host "jsoncpp.lib already at target: $target"
+          }
+          Get-ChildItem 'json_git\lib\Release' | Format-Table -AutoSize
           Pop-Location
 
-      - name: Build DVCModel.sln (Release / x64)
+      - name: Point DVCModel.vcxproj at source jsoncpp (undo vcpkg path)
+        shell: pwsh
+        # Upstream's Debug|Win32 config references the source-build
+        # paths (`./opensource/jsoncpp/include/json` and
+        # `./opensource/jsoncpp/json_git/lib/Release`) which is what
+        # our build just produced. Release|Win32 (and Debug|x64) were
+        # later patched to point at a private vcpkg layout
+        # (`./opensource/vcpkg/packages/jsoncpp_x86-windows/...`) that
+        # CI can't populate without installing vcpkg's specific
+        # jsoncpp version — which has historically had a different
+        # class layout from the pinned jsoncpp source DVCModel expects
+        # (root cause of prior 0xC0000005 crashes inside setCommand).
+        # Rewrite the Release|Win32 paths back to the source layout.
+        run: |
+          $vcxproj = 'dvc\DVCModel.vcxproj'
+          $text = Get-Content $vcxproj -Raw
+          # Four exact path strings to replace. Using plain -replace
+          # with regex-escaped forward slashes; PowerShell's
+          # replacement string does not interpret backslashes so
+          # Windows paths are passed verbatim.
+          $text = $text.Replace('./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', `
+                                './opensource/jsoncpp/include/json')
+          $text = $text.Replace('./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', `
+                                './opensource/jsoncpp/json_git/lib/Release')
+          Set-Content -Path $vcxproj -Value $text -NoNewline
+          Write-Host "--- AdditionalIncludeDirectories / AdditionalLibraryDirectories after rewrite ---"
+          Select-String -Path $vcxproj -Pattern 'AdditionalIncludeDirectories|AdditionalLibraryDirectories' |
+            ForEach-Object { Write-Host "  $($_.Line.Trim())" }
+
+      - name: Build DVCModel.sln (Release / Win32 / v143)
         shell: cmd
-        # Straight msbuild call with upstream's expected platform. No
-        # sed patches, no path rewrites — DVCModel.vcxproj finds
-        # jsoncpp via `./opensource/jsoncpp/include/json` (headers)
-        # and `./opensource/jsoncpp/json_git/lib/Release` (import
-        # lib) by default, both of which the previous step populates.
-        # Toolset intentionally left at vcxproj default (gets auto-
-        # upgraded to v143 by msbuild since v141 isn't installed).
+        # Platform=x86 at the solution level → Win32 at the vcxproj
+        # level. This config is the only one upstream has a complete
+        # AdditionalIncludeDirectories set for across every sub-
+        # project; it's also the combo that built cleanly in run #15
+        # (before the vcpkg ABI issue took over at runtime).
         run: |
           cd dvc
           msbuild DVCModel.sln ^
             /p:Configuration=Release ^
-            /p:Platform=x64 ^
+            /p:Platform=x86 ^
             /p:PlatformToolset=v143 ^
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
@@ -176,10 +220,6 @@ jobs:
       - name: Locate build output
         id: locate
         shell: pwsh
-        # Release / x64 output dir differs across vcxprojs: the root
-        # `DVCModel.vcxproj` emits to `dvc/x64/Release/`, while older
-        # configs emit to `dvc/Release/`. Find the exe dynamically so
-        # the rest of the pipeline doesn't care.
         run: |
           $exeItem = Get-ChildItem -Path dvc -Recurse -Filter ExampleWindows.exe -File |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -212,8 +252,8 @@ jobs:
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          # x64 dumpbin for x64 binaries.
-          $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          # x86 dumpbin host for x86 binaries.
+          $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\*\bin\Hostx64\x86\dumpbin.exe' | Select-Object -First 1
           if (-not $dumpbin) {
             Write-Host "dumpbin not found; skipping dependency inspection"
             return
@@ -240,14 +280,14 @@ jobs:
         id: publish
         uses: actions/upload-artifact@v4
         with:
-          name: dvc-windows-x64-${{ github.run_id }}
+          name: dvc-windows-x86-${{ github.run_id }}
           path: ${{ steps.locate.outputs.stage_dir }}/**
           retention-days: 90
           if-no-files-found: error
 
       - name: Set artifact output
         shell: bash
-        run: echo "artifact_name=dvc-windows-x64-v141-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+        run: echo "artifact_name=dvc-windows-x86-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload build logs on failure
         if: failure()
@@ -277,12 +317,13 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length | Format-Table -AutoSize
 
-      - name: Single-fixture probe (cmd.exe)
+      - name: Single-fixture probe (cmd.exe, 01_clean)
         shell: cmd
         continue-on-error: true
-        # If this prints "Hello World!" + produces an output JSON, we
-        # have parity. If it crashes, next step is to attach debug
-        # symbols or rebuild upstream as Debug config.
+        # Prior iterations crashed silently here with 0xC0000005 —
+        # jsoncpp ABI skew. After this rewrite the binary links
+        # against the pinned jsoncpp source we built from scratch, so
+        # the import table and the runtime DLL match exactly.
         run: |
           for /f "delims=" %%X in ('dir /b /s "dvc-bin\ExampleWindows.exe"') do set EXE=%%X
           echo using: %EXE%
