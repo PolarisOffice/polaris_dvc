@@ -479,11 +479,20 @@ jobs:
           Copy-Item $korean $koreanAs -Force
 
           function Invoke-Probe {
-              param([string]$label, [string]$doc, [string]$outJson)
+              param(
+                  [string]$label,
+                  [string]$doc,
+                  [string]$outJson,
+                  [string]$specPath = ''
+              )
+              # Default to the trivial `{}` spec if caller doesn't
+              # override. Probe 5 passes the canonical jsonFullSpec.
+              if (-not $specPath) { $specPath = $trivSpec }
               Write-Host "::group::$label"
               Write-Host "  doc:  $doc"
               Write-Host "  size: $((Get-Item $doc).Length) bytes"
-              & $exe -j -o "--file=$outJson" $trivSpec $doc 2>&1 | ForEach-Object { Write-Host "  > $_" }
+              Write-Host "  spec: $specPath ($((Get-Item $specPath).Length) bytes)"
+              & $exe -j -o "--file=$outJson" $specPath $doc 2>&1 | ForEach-Object { Write-Host "  > $_" }
               Write-Host "  exit_code=$LASTEXITCODE"
               if (Test-Path $outJson) {
                   Write-Host "  --- OUTPUT PRODUCED ---"
@@ -500,6 +509,33 @@ jobs:
                        $korean   (Join-Path $outDir 'probe4b.json')
           Invoke-Probe "probe 4c - 테스트.hwpx copied to ASCII path" `
                        $koreanAs (Join-Path $outDir 'probe4c.json')
+
+          # Probe 4 with `{}` spec returned "초기화 진행에 오류가 있습니다"
+          # graceful-failure (exit 0, no output). That means
+          # Checker::Initialize() returned false — either because
+          # rule-list load rejected `{}`, OR because OWPMLReader
+          # rejected the HWPX. We can't tell which without a real
+          # spec. Probe 5 pairs the same real HWPX with the upstream
+          # canonical spec `schemas/jsonFullSpec.json` — identical to
+          # `third_party/dvc-upstream/sample/jsonFullSpec.json`. If
+          # 5 still prints the same Korean message, rule-list load
+          # was the `{}` failure and OWPMLReader is fine. If 5
+          # CRASHES (exit -1073741819), we've isolated the crash to
+          # OWPMLReader+real HWPX. If 5 succeeds with real JSON
+          # output, the crash was specific to our synthetic fixtures.
+          Write-Host ""
+          Write-Host "=== probe 5: real HWPX + canonical upstream spec ==="
+          $fullSpec = 'schemas\jsonFullSpec.json'
+          if (Test-Path $fullSpec) {
+              Invoke-Probe "probe 5a - empty.hwpx + jsonFullSpec" `
+                           $empty    (Join-Path $outDir 'probe5a.json') `
+                           $fullSpec
+              Invoke-Probe "probe 5b - 테스트.hwpx + jsonFullSpec" `
+                           $korean   (Join-Path $outDir 'probe5b.json') `
+                           $fullSpec
+          } else {
+              Write-Host "schemas/jsonFullSpec.json not found, skipping probe 5"
+          }
 
       - name: Single-fixture probe (cmd.exe, 01_clean)
         shell: cmd
