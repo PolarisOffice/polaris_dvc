@@ -15,7 +15,7 @@ mod types;
 pub use types::{
     Border, BorderFill, Bullet, CharPr, FaceName, Fill, FillBrush, FillGradation, FontRef, Header,
     HwpxDocument, LineSeg, Numbering, ParaHead, ParaPr, Paragraph, Run, Section, Shadow, Strikeout,
-    Style, Table, TableEdges, TablePos, TableSz, Underline,
+    StructuralFacts, Style, Table, TableEdges, TablePos, TableSz, Underline,
 };
 
 #[derive(Debug, Error)]
@@ -35,11 +35,42 @@ pub fn open_bytes(input: &[u8]) -> Result<HwpxDocument, HwpxError> {
     let reader = Cursor::new(input);
     let mut zip = zip::ZipArchive::new(reader)?;
 
+    // Capture structural facts up front. `zip` 0.6 exposes entries in
+    // insertion (central-directory) order via `by_index`; the HWPX spec
+    // requires `mimetype` to be that first entry, STORED, with exact
+    // payload "application/hwp+zip". These facts drive integrity
+    // checks 11010-11012 (see engine::check_integrity_structural_facts).
+    let mut structural = types::StructuralFacts::default();
+    {
+        let mut mime_entry = zip.by_index(0)?;
+        if mime_entry.name() == "mimetype" {
+            structural.mimetype_is_first = true;
+        }
+        // `CompressionMethod::Stored` == the raw uncompressed variant.
+        structural.mimetype_stored = mime_entry.compression() == zip::CompressionMethod::Stored;
+        // The content is only meaningful to read once — subsequent
+        // by_name("mimetype") will work against a seek-cloned reader.
+        let mut s = String::new();
+        let _ = mime_entry.read_to_string(&mut s);
+        drop(mime_entry);
+        // Collect the ZIP entry list for BinData cross-reference. One
+        // pass through by_index covers the whole archive.
+        for i in 0..zip.len() {
+            if let Ok(entry) = zip.by_index(i) {
+                let name = entry.name();
+                if name.starts_with("BinData/") {
+                    structural.zip_bindata_paths.push(name.to_string());
+                }
+            }
+        }
+    }
+
     let mimetype = read_entry_as_string(&mut zip, "mimetype").unwrap_or_default();
 
     let content_hpf = read_entry_as_string(&mut zip, "Contents/content.hpf")
         .ok_or(HwpxError::Structure("missing Contents/content.hpf"))?;
     let manifest = container::parse_content_hpf(&content_hpf)?;
+    structural.manifest_bindata_items = manifest.bindata_items.clone();
 
     let header_path = manifest
         .header_path
@@ -61,6 +92,7 @@ pub fn open_bytes(input: &[u8]) -> Result<HwpxDocument, HwpxError> {
         mimetype,
         header,
         sections,
+        structural,
     })
 }
 

@@ -51,6 +51,24 @@ pub fn parse_section(xml: &str) -> Result<Section, HwpxError> {
         match event {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let name = local_name(e.name().as_ref());
+
+                // Generic `binaryItemIDRef` sweep: the attribute shows up
+                // on `<hp:img>`, `<hp:pic>`, `<hp:picture>`, textArt,
+                // various shape sub-elements, etc. Rather than enumerate
+                // element types, scan every Start/Empty for the attr —
+                // cheap and future-proof for OWPML elements we don't
+                // explicitly model. Drives integrity JID 11020.
+                for attr in e.attributes().flatten() {
+                    if local_name(attr.key.as_ref()) == "binaryItemIDRef" {
+                        if let Ok(v) = attr.decode_and_unescape_value(&reader) {
+                            let s = v.into_owned();
+                            if !s.is_empty() {
+                                section.binary_item_id_refs.push(s);
+                            }
+                        }
+                    }
+                }
+
                 match name.as_str() {
                     "p" => {
                         let mut p = Paragraph::default();

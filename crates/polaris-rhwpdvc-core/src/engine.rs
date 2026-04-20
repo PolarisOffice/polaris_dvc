@@ -1569,14 +1569,129 @@ fn check_integrity_empty_lineseg(ctx: &mut Ctx) -> bool {
     true
 }
 
-/// #1, #4, #5 — rely on `HwpxDocument::structural` facts captured at
-/// parse time. Implemented as a no-op stub here because
-/// `StructuralFacts` lands in the follow-up commit; this keeps the
-/// scaffold in place.
-fn check_integrity_structural_facts(_ctx: &mut Ctx) -> bool {
-    // TODO(structural-facts): mimetype position/compression/content
-    //                         BinData manifest↔ZIP cross-checks
-    //                         see engine.rs / header.rs / container.rs
+/// #4 mimetype ZIP invariants (11010-11012) and
+/// #1/#5 BinData 3-way cross-references (11020-11022).
+/// Reads the parse-time `StructuralFacts` + section's collected
+/// `binary_item_id_refs`.
+fn check_integrity_structural_facts(ctx: &mut Ctx) -> bool {
+    let s = &ctx.doc.structural;
+
+    // #4a — mimetype must be ZIP entry #0.
+    if !s.mimetype_is_first {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_MIMETYPE_POSITION,
+            "mimetype is not the first ZIP entry (HWPX / OCF spec requires position 0)",
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    // #4b — mimetype must be STORED (uncompressed).
+    if !s.mimetype_stored {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_MIMETYPE_COMPRESSED,
+            "mimetype ZIP entry is compressed; spec requires STORED",
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    // #4c — content must be exactly `application/hwp+zip`.
+    if ctx.doc.mimetype != "application/hwp+zip" {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_MIMETYPE_CONTENT,
+            format!(
+                "mimetype content is {:?}, expected \"application/hwp+zip\"",
+                ctx.doc.mimetype
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
+    // BinData 3-way sync: build the three sets once, diff them.
+    //
+    //   section `binaryItemIDRef` → must match a manifest item's `id`
+    //   manifest item href → must match a ZIP entry path
+    //   ZIP BinData entry → should match a manifest item href (orphan)
+    use std::collections::HashSet;
+    let section_refs: HashSet<&str> = ctx
+        .doc
+        .sections
+        .iter()
+        .flat_map(|s| s.binary_item_id_refs.iter().map(String::as_str))
+        .collect();
+    let manifest_ids: HashSet<&str> = s
+        .manifest_bindata_items
+        .iter()
+        .map(|(id, _)| id.as_str())
+        .collect();
+    let manifest_hrefs: HashSet<&str> = s
+        .manifest_bindata_items
+        .iter()
+        .map(|(_, href)| href.as_str())
+        .collect();
+    let zip_paths: HashSet<&str> = s.zip_bindata_paths.iter().map(String::as_str).collect();
+
+    // #1 — section references a binaryItemIDRef that the manifest
+    // doesn't define.
+    let mut orphan_refs: Vec<&str> = section_refs
+        .iter()
+        .copied()
+        .filter(|r| !manifest_ids.contains(r))
+        .collect();
+    orphan_refs.sort();
+    for r in orphan_refs {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_BINDATA_REF_MISSING_MANIFEST,
+            format!("section references binaryItemIDRef={r:?} with no matching manifest item"),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
+    // #5a — manifest references a BinData file that isn't in the ZIP.
+    let mut missing_files: Vec<&str> = manifest_hrefs
+        .iter()
+        .copied()
+        .filter(|h| !zip_paths.contains(h))
+        .collect();
+    missing_files.sort();
+    for href in missing_files {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_BINDATA_MANIFEST_MISSING_FILE,
+            format!("manifest lists BinData href={href:?} but the ZIP has no such entry"),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
+    // #5b — ZIP has a BinData entry no manifest item points at.
+    let mut orphan_files: Vec<&str> = zip_paths
+        .iter()
+        .copied()
+        .filter(|p| !manifest_hrefs.contains(p))
+        .collect();
+    orphan_files.sort();
+    for path in orphan_files {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_BINDATA_ORPHAN_FILE,
+            format!("ZIP BinData entry {path:?} is not referenced by any manifest item"),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
     true
 }
 
@@ -1612,11 +1727,24 @@ mod tests {
         let section = polaris_rhwpdvc_hwpx::Section {
             paragraphs: vec![paragraph],
             tables: Vec::new(),
+            binary_item_id_refs: Vec::new(),
         };
         HwpxDocument {
             mimetype: "application/hwp+zip".into(),
             header,
             sections: vec![section],
+            structural: mimetype_ok_facts(),
+        }
+    }
+
+    /// Minimal `StructuralFacts` that satisfies all mimetype integrity
+    /// checks (11010/11011/11012). Used by synthetic test docs that
+    /// aren't built from a real ZIP.
+    fn mimetype_ok_facts() -> polaris_rhwpdvc_hwpx::StructuralFacts {
+        polaris_rhwpdvc_hwpx::StructuralFacts {
+            mimetype_is_first: true,
+            mimetype_stored: true,
+            ..Default::default()
         }
     }
 
@@ -1755,7 +1883,9 @@ mod tests {
                     make_para(0, "clean2", 3200),
                 ],
                 tables: Vec::new(),
+                binary_item_id_refs: Vec::new(),
             }],
+            structural: mimetype_ok_facts(),
         };
 
         let spec: RuleSpec = serde_json::from_str(r#"{"charshape":{"fontsize":10}}"#).unwrap();
@@ -1815,7 +1945,9 @@ mod tests {
                     make_para("p3", 0),
                 ],
                 tables: Vec::new(),
+                binary_item_id_refs: Vec::new(),
             }],
+            structural: mimetype_ok_facts(),
         };
 
         let spec: RuleSpec = serde_json::from_str(r#"{"charshape":{"fontsize":10}}"#).unwrap();
@@ -1869,7 +2001,9 @@ mod tests {
                     nesting_depth: 0,
                     ..Table::default()
                 }],
+                binary_item_id_refs: Vec::new(),
             }],
+            structural: mimetype_ok_facts(),
         };
 
         // Spec: Top (position 1) must be SOLID (bordertype 1).
@@ -1904,7 +2038,9 @@ mod tests {
                         ..Table::default()
                     },
                 ],
+                binary_item_id_refs: Vec::new(),
             }],
+            structural: mimetype_ok_facts(),
         };
         let spec: RuleSpec = serde_json::from_str(r#"{"table":{"table-in-table":false}}"#).unwrap();
         let r = validate(&doc, &spec, &EngineOptions::default());

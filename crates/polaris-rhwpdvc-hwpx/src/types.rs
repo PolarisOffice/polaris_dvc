@@ -9,6 +9,31 @@ pub struct HwpxDocument {
     pub mimetype: String,
     pub header: Header,
     pub sections: Vec<Section>,
+    /// Structural facts captured at parse time for integrity checks
+    /// that aren't expressible through the normal rule spec — mimetype
+    /// ZIP-level invariants, BinData cross-references, etc. See
+    /// [`StructuralFacts`].
+    pub structural: StructuralFacts,
+}
+
+/// ZIP-container and manifest-level observations the parser collects
+/// on the way through `open_bytes`. Populated once per document.
+/// Consumed by `engine::check_integrity` (JID 11010+ / 11020+).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct StructuralFacts {
+    /// True when `mimetype` is the literal first entry in the ZIP
+    /// central directory (HWPX / OCF spec requires this).
+    pub mimetype_is_first: bool,
+    /// True when the mimetype entry uses `Stored` compression (must
+    /// be uncompressed per spec). False for any other method.
+    pub mimetype_stored: bool,
+    /// All ZIP paths under `BinData/` — every binary asset actually
+    /// present in the archive.
+    pub zip_bindata_paths: Vec<String>,
+    /// Manifest items that reference binaries. Each entry is
+    /// `(opf:item@id, opf:item@href)`. Populated from
+    /// `Contents/content.hpf`.
+    pub manifest_bindata_items: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -265,6 +290,9 @@ pub struct Section {
     /// Tables encountered anywhere under this section, flattened. Order is
     /// document order. Nested tables (table-in-table) expand inline.
     pub tables: Vec<Table>,
+    /// Every `binaryItemIDRef` value seen on picture/image/shape objects
+    /// inside this section. Feeds integrity check JID 11020.
+    pub binary_item_id_refs: Vec<String>,
 }
 
 /// A `<hp:tbl>` occurrence. We collect every sub-element the DVC rule

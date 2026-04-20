@@ -17,6 +17,9 @@ pub struct Manifest {
     /// `OWPMLReader::haveMacroInDocument()` — the presence of a JavaScript
     /// asset in the OPF manifest is DVC's macro-usage signal.
     pub has_macro: bool,
+    /// `(id, href)` pairs for manifest items whose `href` points into
+    /// `BinData/`. Feeds integrity JIDs 11020/11021/11022.
+    pub bindata_items: Vec<(String, String)>,
 }
 
 pub fn parse_content_hpf(xml: &str) -> Result<Manifest, HwpxError> {
@@ -80,6 +83,16 @@ pub fn parse_content_hpf(xml: &str) -> Result<Manifest, HwpxError> {
         .map(|(_, href, _)| href.clone());
 
     manifest.has_macro = items.iter().any(|(_, href, _)| href.contains(".js"));
+
+    // BinData cross-reference source: every manifest entry whose href
+    // lives under `BinData/`. Preserve id + href so downstream can
+    // diff against section `binaryItemIDRef` values and against the
+    // actual ZIP entry list.
+    manifest.bindata_items = items
+        .iter()
+        .filter(|(_, href, _)| href.contains("BinData/"))
+        .map(|(id, href, _)| (id.clone(), href.clone()))
+        .collect();
 
     // Resolve sections, preferring spine order.
     let mut ordered: Vec<String> = Vec::new();

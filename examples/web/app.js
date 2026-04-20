@@ -57,6 +57,13 @@ const PRESETS = {
     macro: { permission: false },
     specialcharacter: { minimum: 32, maximum: 1048575 },
   },
+  // polaris-original: structural integrity is always-on in Extended
+  // mode, so an empty spec is enough — the check engine still runs
+  // JID 11000-11999 checks against every document. Point of this
+  // preset: signal to the user that "dropping an HWPX here with no
+  // other rules will still catch orphan refs / bad mimetype / broken
+  // BinData sync". Handy for LLM-generated or hand-crafted docs.
+  integrity: {},
 };
 
 // Mutable state

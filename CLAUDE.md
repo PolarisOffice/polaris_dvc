@@ -260,6 +260,45 @@ happens via regular rebase-on-merge on GitHub.
 | Golden case list | `crates/polaris-rhwpdvc-core/tests/golden.rs` |
 | Upstream references | `third_party/dvc-upstream/Source/{Checker,CheckList,DVCOutputJson,OWPMLReader,JsonModel}.*` |
 
+## Structural-integrity checks (JID 11000-11999)
+
+Polaris-original check category that catches cross-reference and
+ZIP-container defects the DVC rule system doesn't address. Common in
+hand-crafted or LLM-generated HWPX.
+
+Currently implemented (all emitted from `engine::check_integrity`):
+
+| JID | Condition |
+|---|---|
+| 11001 | `charPrIDRef` has no matching `<hh:charPr>` in header |
+| 11002 | `paraPrIDRef` has no matching `<hh:paraPr>` |
+| 11003 | `styleIDRef` has no matching `<hh:style>` |
+| 11004 | paragraph has text but empty `<hp:linesegarray>` |
+| 11010 | `mimetype` isn't the first ZIP entry |
+| 11011 | `mimetype` entry is compressed (spec requires STORED) |
+| 11012 | `mimetype` content isn't `application/hwp+zip` |
+| 11020 | section's `binaryItemIDRef` not in the manifest |
+| 11021 | manifest lists BinData href but the ZIP doesn't have the file |
+| 11022 | ZIP has a `BinData/*` entry no manifest item points at |
+
+Strict-mode gate filters 11000-11999 automatically — upstream DVC
+never emits these, so DvcStrict output stays byte-compatible.
+
+Adding a new integrity check:
+1. Reserve a JID constant in `error_codes::jid` (11000-11999 range).
+2. Add a text() arm (ideally through a `const X: u32 = jid::Y.value()`
+   binding — match other integrity arms).
+3. Add a function `check_integrity_<thing>(&mut Ctx) -> bool` in
+   `engine.rs`. Use `integrity_violation(ctx, jid, msg)` to shape the
+   record.
+4. Wire it into `check_integrity`. No strict-gate edits needed.
+5. Add a golden case with a minimal fixture that triggers the new
+   JID; `spec.json` is usually `"{}"` (pure integrity, no DVC rules).
+
+If the new check needs data the parser doesn't currently capture,
+extend `StructuralFacts` in `polaris-rhwpdvc-hwpx/src/types.rs` and
+populate it from `open_bytes` / `section::parse_section`.
+
 ## Extended vs DvcStrict profiles
 
 The engine has two check profiles (`EngineOptions::profile`):
