@@ -125,17 +125,25 @@ jobs:
                 -DJSONCPP_STATIC_WINDOWS_RUNTIME=OFF
           cmake --build json_git --config Release --target jsoncpp_static
           # cmake_static_targets name varies across jsoncpp versions;
-          # the pinned commit uses `jsoncpp_static` producing
-          # `json_git\src\lib_json\Release\jsoncpp_static.lib`. We need
-          # it at the path the vcxproj expects: `json_git\lib\Release\
-          # jsoncpp.lib`.
+          # the pinned commit happens to emit `jsoncpp.lib` directly
+          # at `json_git\lib\Release\jsoncpp.lib` (where the vcxproj
+          # already looks), so no rename/copy is needed — just verify.
+          # Copy only when we land a differently-named static lib.
+          $target = (Resolve-Path -LiteralPath .).Path + '\json_git\lib\Release\jsoncpp.lib'
           New-Item -ItemType Directory -Force -Path 'json_git\lib\Release' | Out-Null
-          $src = Get-ChildItem -Path 'json_git' -Recurse -Filter '*.lib' |
-            Where-Object { $_.Name -match 'jsoncpp' } |
-            Select-Object -First 1
-          if (-not $src) { throw "jsoncpp static lib not found after cmake build" }
-          Write-Host "found lib: $($src.FullName)"
-          Copy-Item $src.FullName 'json_git\lib\Release\jsoncpp.lib' -Force
+          if (Test-Path $target) {
+            Write-Host "lib already at target: $target"
+          } else {
+            $src = Get-ChildItem -Path 'json_git' -Recurse -Filter '*.lib' |
+              Where-Object { $_.Name -match 'jsoncpp' } |
+              Select-Object -First 1
+            if (-not $src) { throw "jsoncpp static lib not found after cmake build" }
+            Write-Host "copying: $($src.FullName) -> $target"
+            Copy-Item $src.FullName $target -Force
+          }
+          # Sanity: surface the lib file DVCModel.vcxproj will consume.
+          Get-ChildItem 'json_git\lib\Release' | Select-Object Name, Length |
+            Format-Table -AutoSize
           Pop-Location
 
       - name: Detect installed Windows SDK
