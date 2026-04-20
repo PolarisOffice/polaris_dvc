@@ -8,6 +8,8 @@ Cargo.lock.bak
 /.vscode
 /.idea
 *.wasm
+# Claude Code runtime state (scheduled-task locks, session bookkeeping).
+/.claude/
 
 # Local env files. Secrets like GITHUB_PAT live in `.env.local`;
 # only `.env.local.example` is committed as a template.
