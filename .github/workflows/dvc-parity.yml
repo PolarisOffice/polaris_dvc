@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   build:
-    name: Build DVC binary set (v141 / x64, upstream-canonical)
+    name: Build DVC binary set (v143 / x64, near-upstream recipe)
     runs-on: windows-latest
     env:
       UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
@@ -85,40 +85,6 @@ jobs:
           git clone --depth 1 https://github.com/open-source-parsers/jsoncpp.git
           echo "::endgroup::"
 
-      - name: Install v141 (VS2017) toolset via VS Installer
-        shell: pwsh
-        # windows-latest ships VS2022 Enterprise. Upstream's README
-        # pins VS2017 v15.9.41 / v141 toolset. Add v141 components to
-        # the existing VS2022 install — takes ~3-5 min. Keeps the
-        # compilation target ABI-identical to upstream's published
-        # build, eliminating the toolset-mismatch hypothesis.
-        run: |
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $vsPath = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
-          if (-not (Test-Path $installer)) { throw "VS Installer not found at $installer" }
-          Write-Host "Adding v141 toolset to $vsPath"
-          $args = @(
-            'modify',
-            '--installPath', $vsPath,
-            '--quiet', '--norestart', '--nocache',
-            '--add', 'Microsoft.VisualStudio.Component.VC.v141.x86.x64',
-            '--add', 'Microsoft.VisualStudio.Component.VC.v141.ATL',
-            '--add', 'Microsoft.VisualStudio.Component.VC.v141.MFC'
-          )
-          $proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru -NoNewWindow
-          Write-Host "vs_installer exit: $($proc.ExitCode)"
-          # The installer occasionally returns 3010 (reboot required)
-          # which is fine for our purposes; anything else (non-zero,
-          # non-3010) is fatal.
-          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-            throw "VS Installer failed with exit code $($proc.ExitCode)"
-          }
-          # Sanity: v141 build tools landed.
-          $toolRoot = "$vsPath\VC\Tools\MSVC"
-          Get-ChildItem $toolRoot -Directory | ForEach-Object {
-            Write-Host "  MSVC toolset installed: $($_.Name)"
-          }
-
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
@@ -138,19 +104,22 @@ jobs:
           Write-Host "Using Windows SDK: $ver"
           "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build jsoncpp as shared lib (CMake, v141 / x64)
+      - name: Build jsoncpp as shared lib (CMake / x64)
         shell: pwsh
         # Upstream README:
         #   opensource\jsoncpp\cmake CMakeLists.txt -B json_git -G "Visual Studio 15 2017 Win64"
         #   open jsoncpp.sln → build jsoncpp_lib project → confirm jsoncpp.dll + lib
         #
-        # We target v141 explicitly via `-T v141` so the CRT linkage
-        # matches DVCModel's v141 build. x64 via `-A x64`. Shared DLL
-        # via BUILD_SHARED_LIBS=ON (jsoncpp's CMake default), which
-        # matches the README's `jsoncpp_lib` target (shared).
+        # x64 via `-A x64`. Shared DLL via BUILD_SHARED_LIBS=ON, which
+        # matches the README's `jsoncpp_lib` target. We use the
+        # runner's default toolset (v143) — tried Path A (install
+        # v141 matching upstream's README) but VS Installer modify
+        # failed with exit 1 on windows-latest; falling back to v143
+        # + x64 + shared jsoncpp. If this still crashes inside
+        # setCommand, we'll need a more involved v141 install path.
         run: |
           Push-Location dvc\opensource\jsoncpp
-          cmake -G "Visual Studio 17 2022" -A x64 -T v141 -B json_git `
+          cmake -G "Visual Studio 17 2022" -A x64 -B json_git `
                 -DJSONCPP_WITH_TESTS=OFF `
                 -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF `
                 -DBUILD_SHARED_LIBS=ON `
@@ -163,19 +132,21 @@ jobs:
             Format-Table -AutoSize
           Pop-Location
 
-      - name: Build DVCModel.sln (Release / x64 / v141)
+      - name: Build DVCModel.sln (Release / x64)
         shell: cmd
-        # Straight msbuild call with upstream's expected flags. No
+        # Straight msbuild call with upstream's expected platform. No
         # sed patches, no path rewrites — DVCModel.vcxproj finds
         # jsoncpp via `./opensource/jsoncpp/include/json` (headers)
         # and `./opensource/jsoncpp/json_git/lib/Release` (import
         # lib) by default, both of which the previous step populates.
+        # Toolset intentionally left at vcxproj default (gets auto-
+        # upgraded to v143 by msbuild since v141 isn't installed).
         run: |
           cd dvc
           msbuild DVCModel.sln ^
             /p:Configuration=Release ^
             /p:Platform=x64 ^
-            /p:PlatformToolset=v141 ^
+            /p:PlatformToolset=v143 ^
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
 
@@ -246,7 +217,7 @@ jobs:
         id: publish
         uses: actions/upload-artifact@v4
         with:
-          name: dvc-windows-x64-v141-${{ github.run_id }}
+          name: dvc-windows-x64-${{ github.run_id }}
           path: ${{ steps.locate.outputs.stage_dir }}/**
           retention-days: 90
           if-no-files-found: error
