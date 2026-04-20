@@ -6,11 +6,12 @@ every non-trivial rule spec on our CI. Root cause narrowed but not
 identified. A new local workflow revision now builds an instrumented
 `DvcProbeHarness.exe` and enables crash-dump upload. Run #34 proved the
 crash happens inside `doValidationCheck()` for a non-empty spec, after
-`createDVC()` and `setCommand()` succeed. A follow-up local revision
-adds a harness-level unhandled-exception filter to write a minidump and
-symbolized stack because WER did not produce dump files on the GitHub
-runner. This document lets a fresh agent (AI or human) pick up without
-reading the full conversation history.
+`createDVC()` and `setCommand()` succeed. Run #35 captured the stack:
+`OWPMLReaderModule::OWPMLReader::FindPageInfo` →
+`Checker::Initialize` → `DVCModule::doValidationCheck`. A minidump was
+uploaded as artifact `dvc-crashdumps-24655412858`. This document lets a
+fresh agent (AI or human) pick up without reading the full conversation
+history.
 
 ## 1. What we're trying to do
 
@@ -300,6 +301,23 @@ Run #34 (`24654899545`) result:
 - No WER dump files were uploaded, so the next local revision adds
   `SetUnhandledExceptionFilter`, `MiniDumpWriteDump`, and `StackWalk64`
   directly inside `DvcProbeHarness.exe`.
+
+Run #35 (`24655412858`) result:
+
+- The harness-level exception filter worked and uploaded
+  `dvc-crashdumps-24655412858` (artifact ID `6526962915`).
+- Exception: `0xc0000005` at `7460D6A6`.
+- Symbolized stack from the job log:
+  ```text
+  OWPMLReaderModule::OWPMLReader::FindPageInfo+0xb6
+  Checker::Initialize+0x254
+  DVCModule::doValidationCheck+0x2c7
+  ```
+- This rules out `createDVC`, export-table resolution, and
+  `CommandParser::setCommand` as the immediate crash point. The next
+  source-level investigation should inspect `Source/OWPMLReader.cpp`
+  `FindPageInfo` and the document/page-info state that
+  `Checker::Initialize` passes into it.
 
 ### Option D: Skip CI-based parity, rely on Windows PC run
 
