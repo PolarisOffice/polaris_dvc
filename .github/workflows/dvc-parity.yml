@@ -318,11 +318,14 @@ jobs:
           $src = Join-Path $env:RUNNER_TEMP 'DvcProbeHarness.cpp'
           @'
           #include <windows.h>
+          #include <dbghelp.h>
 
           #include <cstdio>
           #include <string>
 
           #include "export/ExportInterface.h"
+
+          #pragma comment(lib, "dbghelp.lib")
 
           using CreateDvcFn = DVC::IDVC* (__cdecl*)();
           using DeleteDvcFn = void (__cdecl*)(DVC::IDVC*);
@@ -332,7 +335,101 @@ jobs:
               std::fflush(stdout);
           }
 
+          static void dump_stack(EXCEPTION_POINTERS* ep) {
+              HANDLE process = GetCurrentProcess();
+              HANDLE thread = GetCurrentThread();
+              CONTEXT context = *ep->ContextRecord;
+
+              SymSetOptions(SYMOPT_UNDNAME | SYMOPT_LOAD_LINES);
+              SymInitialize(process, nullptr, TRUE);
+
+              DWORD machine = IMAGE_FILE_MACHINE_I386;
+              STACKFRAME64 frame = {};
+              frame.AddrPC.Offset = context.Eip;
+              frame.AddrPC.Mode = AddrModeFlat;
+              frame.AddrFrame.Offset = context.Ebp;
+              frame.AddrFrame.Mode = AddrModeFlat;
+              frame.AddrStack.Offset = context.Esp;
+              frame.AddrStack.Mode = AddrModeFlat;
+
+              std::fwprintf(stdout, L"[harness] stack trace follows\n");
+              for (int i = 0; i < 64; ++i) {
+                  if (!StackWalk64(machine, process, thread, &frame, &context, nullptr,
+                                   SymFunctionTableAccess64, SymGetModuleBase64, nullptr)) {
+                      break;
+                  }
+                  if (frame.AddrPC.Offset == 0) {
+                      break;
+                  }
+
+                  char symbol_buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME] = {};
+                  auto* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+                  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+                  symbol->MaxNameLen = MAX_SYM_NAME;
+
+                  DWORD64 displacement = 0;
+                  if (SymFromAddr(process, frame.AddrPC.Offset, &displacement, symbol)) {
+                      std::fprintf(stdout, "[harness] #%02d 0x%08llx %s+0x%llx\n",
+                                   i, frame.AddrPC.Offset, symbol->Name, displacement);
+                  } else {
+                      std::fprintf(stdout, "[harness] #%02d 0x%08llx <unknown>\n",
+                                   i, frame.AddrPC.Offset);
+                  }
+              }
+              std::fflush(stdout);
+              SymCleanup(process);
+          }
+
+          static void write_minidump(EXCEPTION_POINTERS* ep) {
+              wchar_t dump_dir[MAX_PATH] = {};
+              DWORD len = GetEnvironmentVariableW(L"DVC_PROBE_DUMP_DIR", dump_dir, MAX_PATH);
+              if (len == 0 || len >= MAX_PATH) {
+                  GetCurrentDirectoryW(MAX_PATH, dump_dir);
+              }
+              CreateDirectoryW(dump_dir, nullptr);
+
+              wchar_t dump_path[MAX_PATH] = {};
+              SYSTEMTIME st = {};
+              GetSystemTime(&st);
+              swprintf_s(dump_path, L"%ls\\dvc-harness-%04u%02u%02u-%02u%02u%02u-%lu.dmp",
+                         dump_dir, st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
+                         st.wSecond, GetCurrentProcessId());
+
+              HANDLE file = CreateFileW(dump_path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                        FILE_ATTRIBUTE_NORMAL, nullptr);
+              if (file == INVALID_HANDLE_VALUE) {
+                  std::fwprintf(stdout, L"[harness] CreateFileW dump failed: %lu\n", GetLastError());
+                  std::fflush(stdout);
+                  return;
+              }
+
+              MINIDUMP_EXCEPTION_INFORMATION info = {};
+              info.ThreadId = GetCurrentThreadId();
+              info.ExceptionPointers = ep;
+              info.ClientPointers = FALSE;
+              BOOL ok = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file,
+                                          MiniDumpWithFullMemory, &info, nullptr, nullptr);
+              CloseHandle(file);
+
+              std::fwprintf(stdout, L"[harness] minidump %ls: %ls\n", ok ? L"written" : L"failed", dump_path);
+              if (!ok) {
+                  std::fwprintf(stdout, L"[harness] MiniDumpWriteDump error: %lu\n", GetLastError());
+              }
+              std::fflush(stdout);
+          }
+
+          static LONG WINAPI unhandled_exception(EXCEPTION_POINTERS* ep) {
+              std::fwprintf(stdout, L"[harness] unhandled exception code=0x%08lx address=%p\n",
+                            ep->ExceptionRecord->ExceptionCode,
+                            ep->ExceptionRecord->ExceptionAddress);
+              std::fflush(stdout);
+              write_minidump(ep);
+              dump_stack(ep);
+              return EXCEPTION_EXECUTE_HANDLER;
+          }
+
           int wmain(int argc, wchar_t** argv) {
+              SetUnhandledExceptionFilter(unhandled_exception);
               mark(L"start");
 
               HMODULE dll = LoadLibraryW(L"DVCModel.dll");
@@ -397,7 +494,7 @@ jobs:
 
           $stage = "${{ steps.locate.outputs.stage_dir }}"
           $outExe = Join-Path $stage 'DvcProbeHarness.exe'
-          cl.exe /nologo /EHsc /std:c++17 /DWINDOWS /Zc:wchar_t- /I dvc $src "/Fe$outExe"
+          cl.exe /nologo /EHsc /std:c++17 /DWINDOWS /Zc:wchar_t- /I dvc $src dbghelp.lib "/Fe$outExe"
           if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit $LASTEXITCODE" }
           Get-ChildItem $outExe | Select-Object FullName, Length | Format-Table -AutoSize
 
@@ -546,6 +643,7 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
+          $env:DVC_PROBE_DUMP_DIR = (Resolve-Path 'dvc-crashdumps').Path
           $harness = Get-ChildItem -Path dvc-bin -Recurse -Filter DvcProbeHarness.exe |
                        Select-Object -First 1
           if (-not $harness) {

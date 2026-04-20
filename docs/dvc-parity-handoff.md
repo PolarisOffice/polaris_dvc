@@ -4,9 +4,12 @@
 with access violation (exit code `-1073741819` / `0xC0000005`) for
 every non-trivial rule spec on our CI. Root cause narrowed but not
 identified. A new local workflow revision now builds an instrumented
-`DvcProbeHarness.exe` and enables WER crash-dump upload so the next
-fresh build should identify the failing API boundary and preserve a
-dump. This document lets a fresh agent (AI or human) pick up without
+`DvcProbeHarness.exe` and enables crash-dump upload. Run #34 proved the
+crash happens inside `doValidationCheck()` for a non-empty spec, after
+`createDVC()` and `setCommand()` succeed. A follow-up local revision
+adds a harness-level unhandled-exception filter to write a minidump and
+symbolized stack because WER did not produce dump files on the GitHub
+runner. This document lets a fresh agent (AI or human) pick up without
 reading the full conversation history.
 
 ## 1. What we're trying to do
@@ -287,6 +290,16 @@ The parity job runs the harness once with `{}` and once with
 is the failing call boundary. If `DvcProbeHarness.exe` is missing, the
 job is using an old reused artifact; dispatch a fresh build instead of
 `reuse_artifact_from_run`.
+
+Run #34 (`24654899545`) result:
+
+- `{}`: returned from `doValidationCheck()` with result `0`, then
+  `output()` wrote `null`.
+- `{"charshape":{}}`: printed through `before doValidationCheck`, then
+  exited `-1073741819`.
+- No WER dump files were uploaded, so the next local revision adds
+  `SetUnhandledExceptionFilter`, `MiniDumpWriteDump`, and `StackWalk64`
+  directly inside `DvcProbeHarness.exe`.
 
 ### Option D: Skip CI-based parity, rely on Windows PC run
 
