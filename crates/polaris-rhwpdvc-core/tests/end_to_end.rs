@@ -79,9 +79,11 @@ fn build_hwpx() -> Vec<u8> {
 <hs:sec xmlns:hs=\"s\" xmlns:hp=\"p\">\n\
   <hp:p id=\"0\" paraPrIDRef=\"0\" styleIDRef=\"0\">\n\
     <hp:run charPrIDRef=\"0\"><hp:t>clean</hp:t></hp:run>\n\
+    <hp:linesegarray><hp:lineseg textpos=\"0\" vertpos=\"0\" vertsize=\"1000\" horzpos=\"0\" horzsize=\"42520\"/></hp:linesegarray>\n\
   </hp:p>\n\
   <hp:p id=\"1\" paraPrIDRef=\"0\" styleIDRef=\"0\">\n\
     <hp:run charPrIDRef=\"1\"><hp:t>dirty</hp:t></hp:run>\n\
+    <hp:linesegarray><hp:lineseg textpos=\"0\" vertpos=\"1200\" vertsize=\"1200\" horzpos=\"0\" horzsize=\"42520\"/></hp:linesegarray>\n\
   </hp:p>\n\
 </hs:sec>"
                 .as_bytes(),

@@ -162,5 +162,17 @@
   {
     "name": "41_charshape_violation_in_styled_paragraph",
     "label": "41 · charshape violation in styled paragraph"
+  },
+  {
+    "name": "42_integrity_orphan_char_pr_ref",
+    "label": "42 · integrity orphan char pr ref"
+  },
+  {
+    "name": "43_integrity_empty_lineseg",
+    "label": "43 · integrity empty lineseg"
+  },
+  {
+    "name": "44_integrity_strict_filters_out",
+    "label": "44 · integrity strict filters out"
   }
 ]

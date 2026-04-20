@@ -205,6 +205,9 @@ pub struct FixParagraph {
     /// The fixture wraps it in an extra `<hp:run>` so real HWPX parsers
     /// accept it.
     pub table: Option<FixTable>,
+    /// When true, omit the `<hp:linesegarray>` entirely. Used to exercise
+    /// integrity check `JID_INTEGRITY_EMPTY_LINESEG`. Default: false.
+    pub omit_line_seg: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -282,6 +285,7 @@ impl Fixture {
                     scope: FixRunScope::None,
                 }],
                 table: None,
+                omit_line_seg: false,
             }],
             has_macro: false,
         }
@@ -712,15 +716,18 @@ impl Fixture {
             }
             // Single lineseg per paragraph, vertpos accumulating across
             // paragraphs so the 2nd+ paragraph isn't interpreted as a new
-            // page by the engine's FindPageInfo port.
-            s.push_str(&format!(
-                "<hp:linesegarray>\
-                 <hp:lineseg textpos=\"0\" vertpos=\"{}\" vertsize=\"1000\" \
-                 textheight=\"1000\" baseline=\"850\" spacing=\"600\" \
-                 horzpos=\"0\" horzsize=\"42520\" flags=\"393216\"/>\
-                 </hp:linesegarray>",
-                cumulative_vert
-            ));
+            // page by the engine's FindPageInfo port. Skipped when the
+            // fixture opts in to `omit_line_seg` for integrity tests.
+            if !p.omit_line_seg {
+                s.push_str(&format!(
+                    "<hp:linesegarray>\
+                     <hp:lineseg textpos=\"0\" vertpos=\"{}\" vertsize=\"1000\" \
+                     textheight=\"1000\" baseline=\"850\" spacing=\"600\" \
+                     horzpos=\"0\" horzsize=\"42520\" flags=\"393216\"/>\
+                     </hp:linesegarray>",
+                    cumulative_vert
+                ));
+            }
             s.push_str("</hp:p>");
             cumulative_vert += LINE_ADVANCE;
         }

@@ -158,6 +158,7 @@ fn cases() -> Vec<Case> {
                                 scope: support::FixRunScope::None,
                             }],
                             table: None,
+                            omit_line_seg: false,
                         },
                         FixParagraph {
                             para_pr_id_ref: 0,
@@ -169,6 +170,7 @@ fn cases() -> Vec<Case> {
                                 scope: support::FixRunScope::None,
                             }],
                             table: None,
+                            omit_line_seg: false,
                         },
                     ],
                     has_macro: false,
@@ -757,6 +759,49 @@ fn cases() -> Vec<Case> {
 }
 "#,
             profile: CheckProfile::Extended,
+        },
+        Case {
+            // Integrity: orphan charPrIDRef. Fixture baseline has
+            // char_prs=[0] only; redirect the run to id=99 → emits
+            // JID_INTEGRITY_ORPHAN_CHAR_PR_IDREF (11001).
+            name: "42_integrity_orphan_char_pr_ref",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].runs[0].char_pr_id_ref = 99;
+                f
+            },
+            // Empty spec — just the integrity check runs. The rule
+            // system has nothing to say about this fixture, so only
+            // the polaris-original integrity JID surfaces.
+            spec: "{}",
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Integrity: empty lineSegArray. Baseline fixture with a
+            // knob to skip the <hp:linesegarray> emission → emits
+            // JID_INTEGRITY_EMPTY_LINESEG (11004).
+            name: "43_integrity_empty_lineseg",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].omit_line_seg = true;
+                f
+            },
+            spec: "{}",
+            profile: CheckProfile::Extended,
+        },
+        Case {
+            // Integrity strict-mode filter: same fixture as case 42,
+            // but the DvcStrict profile drops JID 11001 (upstream has
+            // no integrity JIDs in this range) → expected output is [].
+            // Locks in the strict-gate block-list for 11000..=11999.
+            name: "44_integrity_strict_filters_out",
+            build: || {
+                let mut f = Fixture::baseline();
+                f.paragraphs[0].runs[0].char_pr_id_ref = 99;
+                f
+            },
+            spec: "{}",
+            profile: CheckProfile::DvcStrict,
         },
         Case {
             // ParaShape linespacing mode: fixture type=PERCENT, spec

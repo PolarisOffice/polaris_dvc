@@ -55,12 +55,18 @@ pub struct EngineOptions {
     pub profile: CheckProfile,
 }
 
-/// JIDs that upstream `Checker.cpp` lists only as `break;` with no real
-/// comparison. In `DvcStrict` mode we drop violations carrying these
-/// codes so our output stays byte-compatible with DVC.exe. The list is
-/// derived from an audit of upstream `Checker.cpp` (search for
-/// `case JID_X:\n    break;` patterns) cross-referenced with the JIDs
-/// our own engine actually emits.
+/// JIDs the `DvcStrict` gate drops so our output stays byte-compatible
+/// with `DVC.exe`. Two sources feed this list:
+///
+/// 1. **Upstream `Checker.cpp` no-ops** — the dispatch switch has
+///    `case JID_X: break;` with no real comparison, so DVC accepts
+///    those spec entries but emits no violations. Our engine
+///    over-implements several (margin, bgfill, caption, horizontal);
+///    strict mode drops them.
+/// 2. **polaris-original integrity JIDs (11000-11999)** — not in
+///    upstream at all. Under strict mode we filter them out so the
+///    output remains a pure DVC-parity run; otherwise they surface
+///    alongside normal rule violations.
 fn dvc_strict_allows(code: ErrorCode) -> bool {
     !matches!(
         code.value(),
@@ -74,6 +80,8 @@ fn dvc_strict_allows(code: ErrorCode) -> bool {
         | 3041..=3048
         // JID_TABLE_CAPTION_* — noop (also not yet emitted by us).
         | 3026..=3030
+        // polaris-original integrity checks — not in upstream.
+        | 11000..=11999
     )
 }
 
@@ -119,6 +127,14 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
         before_vert_pos: 0,
         before_vert_size: 0,
     };
+
+    // Structural-integrity checks (polaris-original, JID 11000-11999).
+    // Run before anything else so ID-reference / container-shape
+    // problems report up top. Strict-mode callers filter them out
+    // automatically via `dvc_strict_allows`.
+    if !check_integrity(&mut ctx) {
+        return ctx.report;
+    }
 
     // Document-scope checks run before the section walk so a forbidden
     // macro reports before any per-run violation. These fire at most
@@ -1411,6 +1427,159 @@ fn violation_for(
     }
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Structural integrity (polaris-original, JID 11000-11999)
+//
+// Catches cross-reference and container-shape defects that DVC's rule
+// system doesn't address. Common in hand-crafted or LLM-generated
+// HWPX. See `error_codes::jid::INTEGRITY_*` for the JID catalogue.
+//
+// Add a new check by:
+//   1. Reserving a JID constant in `error_codes::jid` (11000-11999).
+//   2. Adding a text() arm.
+//   3. Adding one function `check_integrity_<thing>(&mut Ctx)` that
+//      emits through `ctx.push(integrity_violation(ctx, jid, msg))`.
+//   4. Calling it from `check_integrity`.
+// The strict-mode gate auto-filters everything in this range — no
+// allow-list edits needed when adding a new integrity JID.
+// ──────────────────────────────────────────────────────────────────
+fn check_integrity(ctx: &mut Ctx) -> bool {
+    if !check_integrity_id_refs(ctx) {
+        return false;
+    }
+    if !check_integrity_empty_lineseg(ctx) {
+        return false;
+    }
+    if !check_integrity_structural_facts(ctx) {
+        return false;
+    }
+    true
+}
+
+fn integrity_violation(
+    ctx: &Ctx,
+    code: ErrorCode,
+    diagnostic: impl Into<String>,
+) -> ViolationRecord {
+    // Integrity issues aren't tied to a specific run; we anchor them
+    // at page 1 / line 1 with empty text. The diagnostic string goes
+    // to `error_string` (internal) so the generic-shaped record still
+    // carries actionable information for downstream consumers.
+    ViolationRecord {
+        page_no: ctx.page_no.max(1),
+        line_no: ctx.line_no.max(1),
+        error_code: code,
+        error_string: diagnostic.into(),
+        ..ViolationRecord::new(code)
+    }
+}
+
+/// #2 `charPrIDRef` / `paraPrIDRef` / `styleIDRef` → missing in header.
+fn check_integrity_id_refs(ctx: &mut Ctx) -> bool {
+    let doc = ctx.doc;
+    // Snapshot reference ids so we don't hold &ctx.doc while pushing.
+    struct Orphan {
+        code: ErrorCode,
+        msg: String,
+    }
+    let mut orphans: Vec<Orphan> = Vec::new();
+
+    for section in &doc.sections {
+        for para in &section.paragraphs {
+            if doc.header.para_shape(para.para_pr_id_ref).is_none() {
+                orphans.push(Orphan {
+                    code: jid::INTEGRITY_ORPHAN_PARA_PR_IDREF,
+                    msg: format!(
+                        "paragraph {} references paraPrIDRef={} with no matching <hh:paraPr>",
+                        para.id, para.para_pr_id_ref
+                    ),
+                });
+            }
+            if para.style_id_ref != 0
+                && !doc.header.styles.iter().any(|s| s.id == para.style_id_ref)
+            {
+                orphans.push(Orphan {
+                    code: jid::INTEGRITY_ORPHAN_STYLE_IDREF,
+                    msg: format!(
+                        "paragraph {} references styleIDRef={} with no matching <hh:style>",
+                        para.id, para.style_id_ref
+                    ),
+                });
+            }
+            for run in &para.runs {
+                if doc.header.char_shape(run.char_pr_id_ref).is_none() {
+                    orphans.push(Orphan {
+                        code: jid::INTEGRITY_ORPHAN_CHAR_PR_IDREF,
+                        msg: format!(
+                            "run in paragraph {} references charPrIDRef={} with no matching <hh:charPr>",
+                            para.id, run.char_pr_id_ref
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    for o in orphans {
+        let v = integrity_violation(ctx, o.code, o.msg);
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    true
+}
+
+/// #3 Paragraph with runs that carry text but no `<hp:linesegarray>`
+/// entries.
+fn check_integrity_empty_lineseg(ctx: &mut Ctx) -> bool {
+    struct Hit {
+        section_idx: usize,
+        para_id: u32,
+    }
+    let mut hits: Vec<Hit> = Vec::new();
+
+    for (si, section) in ctx.doc.sections.iter().enumerate() {
+        for para in &section.paragraphs {
+            if !para.line_segs.is_empty() {
+                continue;
+            }
+            let has_text = para.runs.iter().any(|r| !r.text.is_empty());
+            if has_text {
+                hits.push(Hit {
+                    section_idx: si,
+                    para_id: para.id,
+                });
+            }
+        }
+    }
+
+    for h in hits {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_EMPTY_LINESEG,
+            format!(
+                "section {} paragraph {} has text but empty lineSegArray",
+                h.section_idx, h.para_id
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    true
+}
+
+/// #1, #4, #5 — rely on `HwpxDocument::structural` facts captured at
+/// parse time. Implemented as a no-op stub here because
+/// `StructuralFacts` lands in the follow-up commit; this keeps the
+/// scaffold in place.
+fn check_integrity_structural_facts(_ctx: &mut Ctx) -> bool {
+    // TODO(structural-facts): mimetype position/compression/content
+    //                         BinData manifest↔ZIP cross-checks
+    //                         see engine.rs / header.rs / container.rs
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1436,7 +1605,9 @@ mod tests {
             para_pr_id_ref: 0,
             style_id_ref: 0,
             runs: vec![run],
-            line_segs: Vec::new(),
+            // One dummy lineseg keeps the integrity gate happy — these
+            // synthetic test docs aren't exercising page/line tracking.
+            line_segs: vec![polaris_rhwpdvc_hwpx::LineSeg::default()],
         };
         let section = polaris_rhwpdvc_hwpx::Section {
             paragraphs: vec![paragraph],
