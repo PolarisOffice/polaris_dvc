@@ -3,8 +3,11 @@
 **Status as of 2026-04-20**: unresolved. Upstream `DVC.exe` crashes
 with access violation (exit code `-1073741819` / `0xC0000005`) for
 every non-trivial rule spec on our CI. Root cause narrowed but not
-identified. This document lets a fresh agent (AI or human) pick up
-without reading the full conversation history.
+identified. A new local workflow revision now builds an instrumented
+`DvcProbeHarness.exe` and enables WER crash-dump upload so the next
+fresh build should identify the failing API boundary and preserve a
+dump. This document lets a fresh agent (AI or human) pick up without
+reading the full conversation history.
 
 ## 1. What we're trying to do
 
@@ -222,6 +225,14 @@ reg add 'HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps' `
 
 Then `cdb.exe -z <dump>` locally to get the stack.
 
+**Implemented locally in `.github/workflows/dvc-parity.yml` on
+2026-04-20.** The parity job now configures
+`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps`
+to write full dumps under `dvc-crashdumps/` and uploads them as
+artifact `dvc-crashdumps-<run_id>`. A reused old artifact can still
+produce dumps for `ExampleWindows.exe`; a fresh build is needed for
+the new harness below.
+
 ### Option B: Debug-build pdb publication
 
 Build DVCModel with `/p:Configuration=Debug /p:Platform=x86` and
@@ -248,6 +259,34 @@ ExampleWindows prints "Hello World!" BEFORE `createDVC`, but
 because stdout is pipe-buffered in our runner, the line can get
 lost if the crash happens right after. Using `fflush` after every
 print disambiguates.
+
+**Implemented locally in `.github/workflows/dvc-parity.yml` on
+2026-04-20.** The build job compiles `DvcProbeHarness.exe` as Win32
+next to `ExampleWindows.exe`, loads `DVCModel.dll` with
+`LoadLibraryW`, resolves `createDVC`/`deleteDVC` with `GetProcAddress`,
+and flushes after each boundary:
+
+```
+start
+LoadLibraryW ok
+GetProcAddress ok
+before createDVC
+after createDVC
+before setCommand
+after setCommand
+before doValidationCheck
+after doValidationCheck
+before output
+after output
+before deleteDVC
+after deleteDVC
+```
+
+The parity job runs the harness once with `{}` and once with
+`{"charshape":{}}`. If it crashes, the last printed `before ...` line
+is the failing call boundary. If `DvcProbeHarness.exe` is missing, the
+job is using an old reused artifact; dispatch a fresh build instead of
+`reuse_artifact_from_run`.
 
 ### Option D: Skip CI-based parity, rely on Windows PC run
 

@@ -307,6 +307,100 @@ jobs:
             Write-Host "::endgroup::"
           }
 
+      - name: Build diagnostic harness (same DLL, explicit call boundaries)
+        shell: pwsh
+        # ExampleWindows.exe only prints once before it calls into the DLL,
+        # and stdout buffering makes that signal fuzzy after an AV. This
+        # harness loads DVCModel.dll dynamically and flushes after every
+        # boundary so the parity job can tell whether the crash happens in
+        # createDVC, setCommand, doValidationCheck, output, or deleteDVC.
+        run: |
+          $src = Join-Path $env:RUNNER_TEMP 'DvcProbeHarness.cpp'
+          @'
+          #include <windows.h>
+
+          #include <cstdio>
+          #include <string>
+
+          #include "export/ExportInterface.h"
+
+          using CreateDvcFn = DVC::IDVC* (__cdecl*)();
+          using DeleteDvcFn = void (__cdecl*)(DVC::IDVC*);
+
+          static void mark(const wchar_t* label) {
+              std::fwprintf(stdout, L"[harness] %ls\n", label);
+              std::fflush(stdout);
+          }
+
+          int wmain(int argc, wchar_t** argv) {
+              mark(L"start");
+
+              HMODULE dll = LoadLibraryW(L"DVCModel.dll");
+              if (!dll) {
+                  std::fwprintf(stdout, L"[harness] LoadLibraryW(DVCModel.dll) failed: %lu\n", GetLastError());
+                  std::fflush(stdout);
+                  return 101;
+              }
+              mark(L"LoadLibraryW ok");
+
+              auto createDVC = reinterpret_cast<CreateDvcFn>(GetProcAddress(dll, "createDVC"));
+              auto deleteDVC = reinterpret_cast<DeleteDvcFn>(GetProcAddress(dll, "deleteDVC"));
+              if (!createDVC || !deleteDVC) {
+                  std::fwprintf(stdout, L"[harness] GetProcAddress failed: create=%p delete=%p error=%lu\n",
+                                createDVC, deleteDVC, GetLastError());
+                  std::fflush(stdout);
+                  return 102;
+              }
+              mark(L"GetProcAddress ok");
+
+              mark(L"before createDVC");
+              DVC::IDVC* dvc = createDVC();
+              std::fwprintf(stdout, L"[harness] after createDVC ptr=%p\n", dvc);
+              std::fflush(stdout);
+              if (!dvc) {
+                  return 103;
+              }
+
+              mark(L"before setCommand");
+              const wchar_t* msg = dvc->setCommand(argc, argv);
+              if (msg) {
+                  std::fwprintf(stdout, L"[harness] after setCommand msg=%ls\n", msg);
+              } else {
+                  std::fwprintf(stdout, L"[harness] after setCommand msg=(null)\n");
+              }
+              std::fflush(stdout);
+
+              mark(L"before doValidationCheck");
+              bool checked = dvc->doValidationCheck();
+              std::fwprintf(stdout, L"[harness] after doValidationCheck result=%d\n", checked ? 1 : 0);
+              std::fflush(stdout);
+
+              mark(L"before output");
+              bool output = dvc->output();
+              std::fwprintf(stdout, L"[harness] after output result=%d\n", output ? 1 : 0);
+              std::fflush(stdout);
+
+              mark(L"before deleteDVC");
+              deleteDVC(dvc);
+              mark(L"after deleteDVC");
+              FreeLibrary(dll);
+              mark(L"done");
+              return checked ? 0 : 2;
+          }
+          '@ | Set-Content -Path $src -Encoding UTF8 -NoNewline
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -property installationPath
+          if (-not $vs) { throw "Visual Studio installation not found" }
+          Import-Module (Join-Path $vs 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x86 -host_arch=x64'
+
+          $stage = "${{ steps.locate.outputs.stage_dir }}"
+          $outExe = Join-Path $stage 'DvcProbeHarness.exe'
+          cl.exe /nologo /EHsc /std:c++17 /DWINDOWS /Zc:wchar_t- /I dvc $src "/Fe$outExe"
+          if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit $LASTEXITCODE" }
+          Get-ChildItem $outExe | Select-Object FullName, Length | Format-Table -AutoSize
+
       - name: Probe 0 — no args (expect Hello World + exit 0)
         shell: cmd
         continue-on-error: true
@@ -436,6 +530,65 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length | Format-Table -AutoSize
 
+      - name: Enable Windows crash dumps for DVC probes
+        shell: pwsh
+        run: |
+          $dumpDir = Join-Path $pwd 'dvc-crashdumps'
+          New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -PropertyType ExpandString -Value $dumpDir -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -PropertyType DWord -Value 2 -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpCount -PropertyType DWord -Value 16 -Force | Out-Null
+          Write-Host "WER crash dumps enabled under $dumpDir"
+
+      - name: Harness probe — explicit DLL call boundaries
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $harness = Get-ChildItem -Path dvc-bin -Recurse -Filter DvcProbeHarness.exe |
+                       Select-Object -First 1
+          if (-not $harness) {
+            Write-Host "DvcProbeHarness.exe not present in this artifact; skipping. Re-run with a fresh build to enable it."
+            return
+          }
+          $outDir = 'testdata/golden/_dvc-output'
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          $empty = Join-Path 'testdata/real-samples' 'empty.hwpx'
+          $trivial = Join-Path $outDir 'harness-trivial.json'
+          '{}' | Out-File -FilePath $trivial -Encoding ascii -NoNewline
+          $charshape = Join-Path $outDir 'harness-charshape.json'
+          '{"charshape":{}}' | Out-File -FilePath $charshape -Encoding ascii -NoNewline
+
+          function Invoke-HarnessProbe {
+            param([string] $Label, [string] $Spec, [string] $OutJson)
+            Write-Host "::group::$Label"
+            $specAbs = (Resolve-Path $Spec).Path
+            $docAbs = (Resolve-Path $empty).Path
+            $outAbs = [System.IO.Path]::GetFullPath($OutJson)
+            Push-Location (Split-Path -Parent $harness.FullName)
+            try {
+              & $harness.FullName -j -o "--file=$outAbs" $specAbs $docAbs 2>&1 |
+                ForEach-Object { Write-Host "  $_" }
+              Write-Host "  exit_code=$LASTEXITCODE"
+            } finally {
+              Pop-Location
+            }
+            if (Test-Path $OutJson) {
+              Write-Host "  output produced: $((Get-Item $OutJson).Length) bytes"
+            } else {
+              Write-Host "  no output file produced"
+            }
+            Write-Host "::endgroup::"
+          }
+
+          Invoke-HarnessProbe -Label 'harness 1: empty spec `{}`' `
+                              -Spec $trivial `
+                              -OutJson (Join-Path $outDir 'harness-trivial.out.json')
+          Invoke-HarnessProbe -Label 'harness 2: registered key {"charshape":{}}' `
+                              -Spec $charshape `
+                              -OutJson (Join-Path $outDir 'harness-charshape.out.json')
+
       - name: Probe matrix — systematic variable isolation
         shell: pwsh
         continue-on-error: true
@@ -524,4 +677,12 @@ jobs:
         with:
           name: dvc-parity-outputs-${{ github.run_id }}
           path: testdata/golden/_dvc-output/
+          if-no-files-found: warn
+
+      - name: Upload DVC crash dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dvc-crashdumps-${{ github.run_id }}
+          path: dvc-crashdumps/
           if-no-files-found: warn
