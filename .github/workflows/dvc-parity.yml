@@ -256,15 +256,22 @@ jobs:
       - name: Run DVC against each golden fixture
         shell: pwsh
         # Per-invocation bookkeeping:
-        #   - exit code captured via $LASTEXITCODE
+        #   - exit code captured via $p.ExitCode
         #   - stderr redirected to <case>.stderr.log
         #   - stdout to <case>.stdout.log
         #   - the engine's JSON result (if produced) to <case>.json
-        # cmd.exe invocation (over bash) because `wmain` on Windows gets
+        # `Start-Process` (over bash) because `wmain` on Windows gets
         # argv via UTF-16 directly when launched this way — no Git-Bash
         # narrow→wide conversion issues on Hangul paths / content.
         run: |
-          $exe = Resolve-Path "dvc-bin\ExampleWindows.exe"
+          # download-artifact@v4 unpacks into a per-artifact subdirectory
+          # (dvc-bin/<artifact-name>/...), so resolve the exe dynamically
+          # instead of hardcoding a path that would break whenever the
+          # artifact name changes.
+          $exeItem = Get-ChildItem -Path "dvc-bin" -Recurse -Filter "ExampleWindows.exe" | Select-Object -First 1
+          if (-not $exeItem) { throw "ExampleWindows.exe not found under dvc-bin/" }
+          $exe = $exeItem.FullName
+          Write-Host "Using exe: $exe"
           $outDir = "testdata\golden\_dvc-output"
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
           $cases = Get-ChildItem "testdata\golden" -Directory |
