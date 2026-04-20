@@ -58,6 +58,15 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 Write-Host "using: $ExePath"
 
+function Show-Hex {
+    param([string]$label, [string]$path, [int]$max = 64)
+    if (-not (Test-Path $path)) { Write-Host "  $label (missing)"; return }
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $shown = [Math]::Min($bytes.Length, $max)
+    $hex = ($bytes[0..($shown-1)] | ForEach-Object { '{0:x2}' -f $_ }) -join ' '
+    Write-Host "  $label ($($bytes.Length) bytes): $hex$(if ($bytes.Length -gt $max) { ' …' })"
+}
+
 # --- resolve real HWPX inputs ---
 $empty   = Join-Path $RealSamplesDir 'empty.hwpx'
 $korean  = Join-Path $RealSamplesDir '테스트.hwpx'
@@ -136,27 +145,71 @@ try {
     Write-Host "charshape subtree extraction failed: $_"
 }
 
-# --- probe runner ---
+# --- extra synthetic specs for encoding / method isolation ---
+
+# Same `{"charshape":{}}` content via .NET direct-byte write (bypasses
+# any pwsh Out-File pipeline transformations).
+$charshapeBytesSpec = Join-Path $OutDir 'spec-charshape-rawbytes.json'
+[System.IO.File]::WriteAllBytes(
+    $charshapeBytesSpec,
+    [byte[]](0x7B,0x22,0x63,0x68,0x61,0x72,0x73,0x68,0x61,0x70,0x65,0x22,0x3A,0x7B,0x7D,0x7D))
+
+# Same content via Set-Content (different pwsh cmdlet than Out-File).
+$charshapeSetContent = Join-Path $OutDir 'spec-charshape-setcontent.json'
+Set-Content -Path $charshapeSetContent -Value '{"charshape":{}}' -Encoding ascii -NoNewline
+
+# UTF-8 with BOM explicitly — tests BOM handling in jsoncpp.
+$charshapeBomSpec = Join-Path $OutDir 'spec-charshape-utf8bom.json'
+[System.IO.File]::WriteAllBytes(
+    $charshapeBomSpec,
+    [byte[]](0xEF,0xBB,0xBF) + [System.Text.Encoding]::ASCII.GetBytes('{"charshape":{}}'))
+
+# Path with a SPACE in the filename — tests argv quoting edge.
+$spaceDirSpec = Join-Path $OutDir 'spec with space.json'
+[System.IO.File]::WriteAllBytes(
+    $spaceDirSpec,
+    [byte[]](0x7B,0x22,0x63,0x68,0x61,0x72,0x73,0x68,0x61,0x70,0x65,0x22,0x3A,0x7B,0x7D,0x7D))
+
+Write-Host ""
+Write-Host "=== SPEC HEX DUMPS (first 64 bytes each) ==="
+Show-Hex 'spec-trivial                (`{}`)' $trivSpec
+Show-Hex 'spec-padded-27k             (`{` + 27000×space + `}`)' $padSpec 32
+Show-Hex 'spec-charshape-only         (Out-File -Encoding ascii)' $charshapeSpec
+Show-Hex 'spec-charshape-rawbytes     (File.WriteAllBytes)' $charshapeBytesSpec
+Show-Hex 'spec-charshape-setcontent   (Set-Content -Encoding ascii)' $charshapeSetContent
+Show-Hex 'spec-charshape-utf8bom      (explicit BOM prefix)' $charshapeBomSpec
+Show-Hex 'spec-nonexistent            (Out-File -Encoding ascii)' $nonexistentSpec
+Show-Hex 'spec-objproperty            (Out-File -Encoding ascii)' $objpropSpec
+Show-Hex 'schemas\jsonFullSpec.json   (git-checked-out, Windows CRLF)' $FullSpec
+Write-Host ""
+
+# --- probe runner (now with configurable CLI flags) ---
 function Invoke-Probe {
     param(
         [Parameter(Mandatory)] [string] $Label,
         [Parameter(Mandatory)] [string] $Doc,
         [Parameter(Mandatory)] [string] $OutJson,
-        [Parameter(Mandatory)] [string] $SpecPath
+        [Parameter(Mandatory)] [string] $SpecPath,
+        [string[]] $Flags = @('-j', '-o')
     )
     Write-Host "::group::$Label"
     Write-Host "  doc:  $Doc ($((Get-Item $Doc).Length) bytes)"
     Write-Host "  spec: $SpecPath ($((Get-Item $SpecPath).Length) bytes)"
-    & $ExePath -j -o "--file=$OutJson" $SpecPath $Doc 2>&1 |
-        ForEach-Object { Write-Host "  > $_" }
+    $argv = @()
+    $argv += $Flags
+    if ($OutJson) { $argv += "--file=$OutJson" }
+    $argv += $SpecPath
+    $argv += $Doc
+    Write-Host "  argv: $($argv -join ' ')"
+    & $ExePath @argv 2>&1 | ForEach-Object { Write-Host "  > $_" }
     Write-Host "  exit_code=$LASTEXITCODE"
-    if (Test-Path $OutJson) {
+    if ($OutJson -and (Test-Path $OutJson)) {
         $len = (Get-Item $OutJson).Length
         Write-Host "  --- OUTPUT PRODUCED ($len bytes) ---"
         Get-Content $OutJson | Select-Object -First 5 |
             ForEach-Object { Write-Host "  $_" }
         if ($len -gt 200) { Write-Host "  ...(truncated)" }
-    } else {
+    } elseif ($OutJson) {
         Write-Host "  (no output file produced)"
     }
     Write-Host "::endgroup::"
@@ -201,6 +254,53 @@ if ($csOk) {
     Write-Host "::endgroup::"
 }
 
+# =====================================================================
+# Matrix 2 — encoding & method isolation  (all use empty.hwpx + same
+# `{"charshape":{}}` content, vary ONLY how the spec file was written)
+# =====================================================================
+Invoke-Probe -Label 'probe 7a  charshape via File.WriteAllBytes (raw ASCII)' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe7a.json') `
+             -SpecPath $charshapeBytesSpec
+Invoke-Probe -Label 'probe 7b  charshape via Set-Content -Encoding ascii' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe7b.json') `
+             -SpecPath $charshapeSetContent
+Invoke-Probe -Label 'probe 7c  charshape with EXPLICIT UTF-8 BOM prefix' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe7c.json') `
+             -SpecPath $charshapeBomSpec
+Invoke-Probe -Label 'probe 7d  charshape spec path with SPACE in filename' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe7d.json') `
+             -SpecPath $spaceDirSpec
+
+# =====================================================================
+# Matrix 3 — CLI flag isolation  (same empty.hwpx + charshape spec,
+# vary only the DVC flags). Upstream reference from CommandParser.cpp:
+#   -j : format=json    -o : output option=AllOption
+#   -a : level=all      -s : level=simple
+#   -c : output=console -d : output option=Default
+# =====================================================================
+Invoke-Probe -Label 'probe 8a  charshape + just `-j` (no -o, no --file, console output)' `
+             -Doc $empty -OutJson '' `
+             -SpecPath $charshapeBytesSpec -Flags @('-j')
+Invoke-Probe -Label 'probe 8b  charshape + `-j -d` (Default output option instead of AllOption)' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe8b.json') `
+             -SpecPath $charshapeBytesSpec -Flags @('-j','-d')
+Invoke-Probe -Label 'probe 8c  charshape + `-j -s` (simple level)' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe8c.json') `
+             -SpecPath $charshapeBytesSpec -Flags @('-j','-s')
+Invoke-Probe -Label 'probe 8d  charshape + `-j -a` (all level, explicit)' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe8d.json') `
+             -SpecPath $charshapeBytesSpec -Flags @('-j','-a')
+Invoke-Probe -Label 'probe 8e  charshape + `-j -c` (console output only, no file)' `
+             -Doc $empty -OutJson '' `
+             -SpecPath $charshapeBytesSpec -Flags @('-j','-c')
+
 Write-Host ""
 Write-Host "=== MATRIX SUMMARY ==="
 Write-Host "(read exit codes per group above; 0=graceful, -1073741819=AV)"
+Write-Host ""
+Write-Host "Decision tree from this matrix:"
+Write-Host " - 7* same result across encoding variants -> encoding NOT the trigger"
+Write-Host " - 7c (BOM) different -> jsoncpp BOM handling issue"
+Write-Host " - 8a/8e (no --file) still crash -> output-file writing isn't the issue"
+Write-Host " - 8b (-d) works while -o crashes -> AllOption-specific output bug"
+Write-Host " - 8c (-s) works -> simple-mode early-exit avoids the crash path"
