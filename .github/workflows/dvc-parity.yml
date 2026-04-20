@@ -1,33 +1,37 @@
 name: DVC parity (Windows)
 
-# Builds upstream `hancom-io/dvc` on a Windows runner, publishes the
-# resulting binary set as a reusable artifact, and runs the binary
-# against every fixture under `testdata/golden/`.
+# Build upstream hancom-io/dvc on a Windows runner following the
+# **exact recipe** from upstream's README, run the resulting binary
+# against every fixture under `testdata/golden/`, and publish the
+# binary set as a reusable artifact.
 #
-# Two jobs:
-#   build  — compiles DVCModel.dll + ExampleWindows.exe, stages runtime
-#            DLLs, uploads the whole kit as `dvc-windows-x86-<run_id>`.
-#            Useful on its own even when parity verification is offline:
-#            downstream consumers (or humans without Windows) can pull
-#            this artifact instead of building from source.
-#   parity — downloads the artifact and runs DVC.exe against each
-#            fixture, capturing stdout/stderr/exit-code per invocation,
-#            and soft-diffing the outputs against committed expected.json.
+# Prior iterations of this workflow piled up workaround after
+# workaround (v143 retarget, x86 fallback, vcpkg jsoncpp, PCH sed
+# patches, vcxproj path rewrites). Each was needed because the build
+# didn't exist — yet each moved us further from what upstream devs
+# actually ship. The result was binaries that loaded cleanly but
+# crashed inside `setCommand(argv)` with 0xC0000005 whenever the user
+# passed any arguments, almost certainly from ABI skew between DVC's
+# compile-time jsoncpp headers and whatever runtime jsoncpp.dll we'd
+# stuffed in.
 #
-# Historical note: prior iterations of this workflow had
-# `continue-on-error: true` at the job level, which masked runtime
-# failures as green — the build was actually succeeding since commit
-# #TODO but the binary exited silently for every fixture. Failures now
-# surface. See `docs/dvc-parity-status.md` for the diagnostic timeline.
+# This rewrite matches upstream's published build (README):
+#   - Visual Studio 2017 (v141) toolset — installed on top of the
+#     runner's VS2022 via VS Installer
+#   - Win64 (x64) platform
+#   - jsoncpp built from source as `jsoncpp_lib` (shared DLL) via
+#     CMake, left at the paths DVCModel.vcxproj expects by default
+#   - Zero vcxproj patching — if the binary doesn't build this way,
+#     upstream shouldn't be able to build it either, and we learn
+#     something real.
 
 on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Upstream hancom-io/dvc ref to build (branch/tag/SHA)"
+        description: "Upstream hancom-io/dvc ref (branch/tag/SHA)"
         default: "main"
         required: false
-  # Triggered on workflow/script changes so artifact stays fresh.
   push:
     branches: [main]
     paths:
@@ -40,7 +44,7 @@ permissions:
 
 jobs:
   build:
-    name: Build DVC binary set
+    name: Build DVC binary set (v141 / x64, upstream-canonical)
     runs-on: windows-latest
     env:
       UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
@@ -56,10 +60,12 @@ jobs:
 
       - name: Fetch OSS dependencies
         shell: bash
-        # Replicates upstream `update_oss.bat` but clones without a PAT
-        # (the bat wraps them with a token solely to work around
-        # corporate network policies). Also fixes the bat's bug where
-        # the jsoncpp reset runs inside the rapidjson directory.
+        # Upstream's `update_oss.bat` requires a GitHub token argument
+        # and has a typo on the jsoncpp reset (line 58: `cd rapidjson`
+        # instead of `cd jsoncpp`) that silently leaves jsoncpp
+        # unpinned. We replicate the *intent* (clone + pin rapidjson,
+        # clone jsoncpp at HEAD) without the bat's bugs and without
+        # a token.
         run: |
           set -euo pipefail
           cd dvc
@@ -73,78 +79,48 @@ jobs:
           git -C rapidjson reset --hard 8261c1ddf43f10de00fd8c9a67811d1486b2c784
           echo "::endgroup::"
           echo "::group::jsoncpp"
-          git clone https://github.com/open-source-parsers/jsoncpp.git
-          git -C jsoncpp reset --hard 8190e061bc2d95da37479a638aa2c9e483e58ec6
+          # Matches upstream's effective behavior (bat pins but fails
+          # silently). Using HEAD keeps our build on the same codebase
+          # upstream devs would land on running update_oss.bat today.
+          git clone --depth 1 https://github.com/open-source-parsers/jsoncpp.git
           echo "::endgroup::"
 
-      - name: Amalgamate jsoncpp
-        shell: cmd
+      - name: Install v141 (VS2017) toolset via VS Installer
+        shell: pwsh
+        # windows-latest ships VS2022 Enterprise. Upstream's README
+        # pins VS2017 v15.9.41 / v141 toolset. Add v141 components to
+        # the existing VS2022 install — takes ~3-5 min. Keeps the
+        # compilation target ABI-identical to upstream's published
+        # build, eliminating the toolset-mismatch hypothesis.
         run: |
-          cd dvc\opensource\jsoncpp
-          python amalgamate.py || echo "amalgamate.py failed — job will likely fail downstream"
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $vsPath = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
+          if (-not (Test-Path $installer)) { throw "VS Installer not found at $installer" }
+          Write-Host "Adding v141 toolset to $vsPath"
+          $args = @(
+            'modify',
+            '--installPath', $vsPath,
+            '--quiet', '--norestart', '--nocache',
+            '--add', 'Microsoft.VisualStudio.Component.VC.v141.x86.x64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.v141.ATL',
+            '--add', 'Microsoft.VisualStudio.Component.VC.v141.MFC'
+          )
+          $proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru -NoNewWindow
+          Write-Host "vs_installer exit: $($proc.ExitCode)"
+          # The installer occasionally returns 3010 (reboot required)
+          # which is fine for our purposes; anything else (non-zero,
+          # non-3010) is fatal.
+          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+            throw "VS Installer failed with exit code $($proc.ExitCode)"
+          }
+          # Sanity: v141 build tools landed.
+          $toolRoot = "$vsPath\VC\Tools\MSVC"
+          Get-ChildItem $toolRoot -Directory | ForEach-Object {
+            Write-Host "  MSVC toolset installed: $($_.Name)"
+          }
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
-
-      - name: Disable stdafx PCH in OWPML vcxprojs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd dvc/opensource/hwpx-owpml-model
-          find . -name '*.vcxproj' -print0 | while IFS= read -r -d '' p; do
-              if grep -q 'PrecompiledHeader' "$p"; then
-                  sed -i \
-                    -e 's|<PrecompiledHeader>Use</PrecompiledHeader>|<PrecompiledHeader>NotUsing</PrecompiledHeader>|g' \
-                    -e 's|<PrecompiledHeader>Create</PrecompiledHeader>|<PrecompiledHeader>NotUsing</PrecompiledHeader>|g' \
-                    "$p"
-                  echo "patched: $p"
-              fi
-          done
-
-      - name: Build pinned jsoncpp as static lib (upstream-canonical)
-        shell: pwsh
-        # Background: previous iterations installed jsoncpp through
-        # vcpkg (dynamic x86-windows). Build succeeded, binary loaded,
-        # no-args smoke printed "Hello World!" cleanly — but every
-        # args-bearing invocation crashed with 0xC0000005 immediately
-        # after entering `setCommand(argv)`, the place where DVCModel
-        # first reaches into jsoncpp to parse spec.json. Classic signal
-        # of ABI skew between the jsoncpp headers DVCModel compiled
-        # against and the jsoncpp.dll it loaded at runtime.
-        #
-        # Upstream's `update_oss.bat` pins a specific jsoncpp commit
-        # (8190e061bc2d95da37479a638aa2c9e483e58ec6) and expects a
-        # static lib at `./opensource/jsoncpp/json_git/lib/Release/
-        # jsoncpp.lib` — the DVCModel.vcxproj include/lib paths already
-        # point there. We just need to actually run the build.
-        run: |
-          Push-Location dvc\opensource\jsoncpp
-          cmake -G "Visual Studio 17 2022" -A Win32 -B json_git `
-                -DJSONCPP_WITH_TESTS=OFF `
-                -DBUILD_SHARED_LIBS=OFF `
-                -DJSONCPP_STATIC_WINDOWS_RUNTIME=OFF
-          cmake --build json_git --config Release --target jsoncpp_static
-          # cmake_static_targets name varies across jsoncpp versions;
-          # the pinned commit happens to emit `jsoncpp.lib` directly
-          # at `json_git\lib\Release\jsoncpp.lib` (where the vcxproj
-          # already looks), so no rename/copy is needed — just verify.
-          # Copy only when we land a differently-named static lib.
-          $target = (Resolve-Path -LiteralPath .).Path + '\json_git\lib\Release\jsoncpp.lib'
-          New-Item -ItemType Directory -Force -Path 'json_git\lib\Release' | Out-Null
-          if (Test-Path $target) {
-            Write-Host "lib already at target: $target"
-          } else {
-            $src = Get-ChildItem -Path 'json_git' -Recurse -Filter '*.lib' |
-              Where-Object { $_.Name -match 'jsoncpp' } |
-              Select-Object -First 1
-            if (-not $src) { throw "jsoncpp static lib not found after cmake build" }
-            Write-Host "copying: $($src.FullName) -> $target"
-            Copy-Item $src.FullName $target -Force
-          }
-          # Sanity: surface the lib file DVCModel.vcxproj will consume.
-          Get-ChildItem 'json_git\lib\Release' | Select-Object Name, Length |
-            Format-Table -AutoSize
-          Pop-Location
 
       - name: Detect installed Windows SDK
         id: sdk
@@ -162,72 +138,122 @@ jobs:
           Write-Host "Using Windows SDK: $ver"
           "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build DVCModel + ExampleWindows (x86 Release)
+      - name: Build jsoncpp as shared lib (CMake, v141 / x64)
+        shell: pwsh
+        # Upstream README:
+        #   opensource\jsoncpp\cmake CMakeLists.txt -B json_git -G "Visual Studio 15 2017 Win64"
+        #   open jsoncpp.sln → build jsoncpp_lib project → confirm jsoncpp.dll + lib
+        #
+        # We target v141 explicitly via `-T v141` so the CRT linkage
+        # matches DVCModel's v141 build. x64 via `-A x64`. Shared DLL
+        # via BUILD_SHARED_LIBS=ON (jsoncpp's CMake default), which
+        # matches the README's `jsoncpp_lib` target (shared).
+        run: |
+          Push-Location dvc\opensource\jsoncpp
+          cmake -G "Visual Studio 17 2022" -A x64 -T v141 -B json_git `
+                -DJSONCPP_WITH_TESTS=OFF `
+                -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF `
+                -DBUILD_SHARED_LIBS=ON `
+                -DJSONCPP_STATIC_WINDOWS_RUNTIME=OFF
+          cmake --build json_git --config Release --target jsoncpp_lib
+          Write-Host "---"
+          Write-Host "jsoncpp build outputs:"
+          Get-ChildItem -Recurse -Path json_git -Include *.dll,*.lib |
+            Select-Object FullName, Length |
+            Format-Table -AutoSize
+          Pop-Location
+
+      - name: Build DVCModel.sln (Release / x64 / v141)
         shell: cmd
+        # Straight msbuild call with upstream's expected flags. No
+        # sed patches, no path rewrites — DVCModel.vcxproj finds
+        # jsoncpp via `./opensource/jsoncpp/include/json` (headers)
+        # and `./opensource/jsoncpp/json_git/lib/Release` (import
+        # lib) by default, both of which the previous step populates.
         run: |
           cd dvc
           msbuild DVCModel.sln ^
             /p:Configuration=Release ^
-            /p:Platform=x86 ^
-            /p:PlatformToolset=v143 ^
+            /p:Platform=x64 ^
+            /p:PlatformToolset=v141 ^
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
+
+      - name: Locate build output
+        id: locate
+        shell: pwsh
+        # Release / x64 output dir differs across vcxprojs: the root
+        # `DVCModel.vcxproj` emits to `dvc/x64/Release/`, while older
+        # configs emit to `dvc/Release/`. Find the exe dynamically so
+        # the rest of the pipeline doesn't care.
+        run: |
+          $exeItem = Get-ChildItem -Path dvc -Recurse -Filter ExampleWindows.exe -File |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exeItem) { throw "ExampleWindows.exe not found after build" }
+          $dllItem = Get-ChildItem -Path dvc -Recurse -Filter DVCModel.dll -File |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $dllItem) { throw "DVCModel.dll not found after build" }
+          $stageDir = Split-Path -Parent $exeItem.FullName
+          Write-Host "stage dir: $stageDir"
+          Write-Host "exe:       $($exeItem.FullName)"
+          Write-Host "dll:       $($dllItem.FullName)"
+          "stage_dir=$stageDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "exe_path=$($exeItem.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Stage jsoncpp.dll next to ExampleWindows.exe
+        shell: pwsh
+        run: |
+          $stage = "${{ steps.locate.outputs.stage_dir }}"
+          $src = Get-ChildItem -Path dvc\opensource\jsoncpp\json_git -Recurse `
+                               -Filter jsoncpp.dll -File |
+                 Select-Object -First 1
+          if (-not $src) { throw "jsoncpp.dll not found — shared-lib build must have failed" }
+          Copy-Item $src.FullName $stage -Force
+          Write-Host "staged: $($src.FullName) -> $stage"
+          Write-Host "---"
+          Write-Host "Final $stage contents:"
+          Get-ChildItem $stage | Select-Object Name, Length | Format-Table -AutoSize
 
       - name: Inspect DLL dependency tree (dumpbin /dependents)
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\*\bin\Hostx64\x86\dumpbin.exe' | Select-Object -First 1
-          if (-not $dumpbin -or -not (Test-Path $dumpbin)) {
+          # x64 dumpbin for x64 binaries.
+          $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) {
             Write-Host "dumpbin not found; skipping dependency inspection"
-            exit 0
+            return
           }
           Write-Host "dumpbin: $dumpbin"
-          foreach ($t in @("dvc\Release\ExampleWindows.exe", "dvc\Release\DVCModel.dll")) {
-            if (Test-Path $t) {
-              Write-Host "::group::$t dependencies"
-              & $dumpbin /dependents $t
+          $stage = "${{ steps.locate.outputs.stage_dir }}"
+          foreach ($f in @("ExampleWindows.exe", "DVCModel.dll", "jsoncpp.dll")) {
+            $p = Join-Path $stage $f
+            if (Test-Path $p) {
+              Write-Host "::group::$f dependencies"
+              & $dumpbin /dependents $p
               Write-Host "::endgroup::"
             }
           }
 
-      - name: Inspect dvc\Release\ contents
-        shell: pwsh
-        # Static-linked jsoncpp → no runtime DLL staging needed. Just
-        # sanity-check the build output.
-        run: |
-          if (-not (Test-Path "dvc\Release\ExampleWindows.exe")) {
-            throw "Build didn't produce ExampleWindows.exe"
-          }
-          Write-Host "dvc\Release\ contents:"
-          Get-ChildItem "dvc\Release\" | Select-Object Name, Length |
-            Format-Table -AutoSize
-
       - name: Smoke-test ExampleWindows.exe (no args → prints Hello World)
         shell: cmd
         continue-on-error: true
-        # A bare invocation should print "Hello World!" and exit — upstream
-        # `ExampleWindows.cpp` does this unconditionally before CLI
-        # processing. If this step produces no output we have a DLL-load
-        # failure (process aborts before reaching main/wmain).
         run: |
-          dvc\Release\ExampleWindows.exe
+          "${{ steps.locate.outputs.exe_path }}"
           echo exit_code=%errorlevel%
 
       - name: Publish binary artifact
         id: publish
         uses: actions/upload-artifact@v4
         with:
-          name: dvc-windows-x86-${{ github.run_id }}
-          path: |
-            dvc/Release/*.exe
-            dvc/Release/*.dll
+          name: dvc-windows-x64-v141-${{ github.run_id }}
+          path: ${{ steps.locate.outputs.stage_dir }}/**
           retention-days: 90
           if-no-files-found: error
 
       - name: Set artifact output
         shell: bash
-        run: echo "artifact_name=dvc-windows-x86-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+        run: echo "artifact_name=dvc-windows-x64-v141-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload build logs on failure
         if: failure()
@@ -243,9 +269,6 @@ jobs:
     name: Run DVC against golden fixtures
     needs: build
     runs-on: windows-latest
-    # Parity-diff may legitimately differ from our own expected.json
-    # (that's the whole point of the comparison). Don't fail the job on
-    # diffs — only on infrastructure / binary-invocation failures.
     steps:
       - name: Checkout polaris
         uses: actions/checkout@v4
@@ -258,17 +281,14 @@ jobs:
 
       - name: List artifact contents
         shell: pwsh
-        run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length
+        run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length | Format-Table -AutoSize
 
-      - name: Single-fixture probe (cmd.exe, combined stream)
+      - name: Single-fixture probe (cmd.exe)
         shell: cmd
-        # Smoke check #1 at the parity-job level — prior iterations
-        # showed the bare smoke step (no args) prints "Hello World!"
-        # cleanly under cmd.exe but *Start-Process* with args gave an
-        # access-violation exit (0xC0000005) and empty stdout/stderr.
-        # Reproduce the arg-bearing path here under cmd.exe first to
-        # isolate whether the crash is invocation-mechanism-specific.
         continue-on-error: true
+        # If this prints "Hello World!" + produces an output JSON, we
+        # have parity. If it crashes, next step is to attach debug
+        # symbols or rebuild upstream as Debug config.
         run: |
           for /f "delims=" %%X in ('dir /b /s "dvc-bin\ExampleWindows.exe"') do set EXE=%%X
           echo using: %EXE%
@@ -277,29 +297,14 @@ jobs:
           set OUT=testdata\golden\_dvc-output\01_clean.probe.json
           mkdir testdata\golden\_dvc-output 2>nul
           echo --- running with args ---
-          "%EXE%" -j "--file=%OUT%" -t "%SPEC%" "%DOC%" > probe.stdout.txt 2> probe.stderr.txt
+          "%EXE%" -j "--file=%OUT%" -t "%SPEC%" "%DOC%"
           echo exit_code=%errorlevel%
-          echo --- probe.stdout.txt ---
-          type probe.stdout.txt
-          echo --- probe.stderr.txt ---
-          type probe.stderr.txt
           if exist "%OUT%" (echo --- output file produced --- & type "%OUT%") else (echo no output file)
 
       - name: Run DVC against each golden fixture
         shell: pwsh
-        # Per-invocation bookkeeping:
-        #   - exit code captured via $LASTEXITCODE
-        #   - combined stdout+stderr via `*>&1` so a crash between
-        #     "Hello World!" print and buffer flush still captures
-        #     anything the CRT wrote to stderr during teardown
-        # Use `&` (call operator) instead of Start-Process — the prior
-        # Start-Process variant crashed uniformly with 0xC0000005 on
-        # every fixture and lost the "Hello World!" print; smoke test
-        # under cmd.exe printed it fine. Leaving the invocation to
-        # PowerShell's native process-spawning path avoids whatever
-        # Start-Process was breaking.
         run: |
-          $exeItem = Get-ChildItem -Path "dvc-bin" -Recurse -Filter "ExampleWindows.exe" | Select-Object -First 1
+          $exeItem = Get-ChildItem -Path dvc-bin -Recurse -Filter ExampleWindows.exe | Select-Object -First 1
           if (-not $exeItem) { throw "ExampleWindows.exe not found under dvc-bin/" }
           $exe = $exeItem.FullName
           Write-Host "Using exe: $exe"
@@ -313,11 +318,9 @@ jobs:
             $doc = Join-Path $case.FullName "doc.hwpx"
             $spec = Join-Path $case.FullName "spec.json"
             $out = Join-Path $outDir "$name.json"
-            $log = Join-Path $outDir "$name.log"
             Write-Host "::group::$name"
             $combined = & $exe -j "--file=$out" -t $spec $doc 2>&1
             $rc = $LASTEXITCODE
-            $combined | Out-File -FilePath $log -Encoding utf8
             Write-Host "exit_code=$rc"
             if ($combined) { Write-Host "--- output ---"; $combined | ForEach-Object { Write-Host $_ } }
             if (Test-Path $out) {
