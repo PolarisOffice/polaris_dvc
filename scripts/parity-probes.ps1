@@ -294,6 +294,63 @@ Invoke-Probe -Label 'probe 8e  charshape + `-j -c` (console output only, no file
              -Doc $empty -OutJson '' `
              -SpecPath $charshapeBytesSpec -Flags @('-j','-c')
 
+# =====================================================================
+# Matrix 4 — JSON shape variations (every single variable so far has
+# been ruled out except "loop body entry"). These probe whether
+# anything about the top-level member's SHAPE (not just its presence)
+# changes behavior.
+# =====================================================================
+
+# Single-char key vs the usual multi-char keys.
+$aKeySpec = Join-Path $OutDir 'spec-a-obj.json'
+[System.IO.File]::WriteAllBytes($aKeySpec, [System.Text.Encoding]::ASCII.GetBytes('{"a":{}}'))
+
+# Late-alphabet key (std::map ordering).
+$zKeySpec = Join-Path $OutDir 'spec-z-obj.json'
+[System.IO.File]::WriteAllBytes($zKeySpec, [System.Text.Encoding]::ASCII.GetBytes('{"z":{}}'))
+
+# Empty-string key.
+$emptyKeySpec = Join-Path $OutDir 'spec-emptykey-obj.json'
+[System.IO.File]::WriteAllBytes($emptyKeySpec, [System.Text.Encoding]::ASCII.GetBytes('{"":{}}'))
+
+# VALUE as int — does value type change behavior?
+$intValSpec = Join-Path $OutDir 'spec-charshape-int.json'
+[System.IO.File]::WriteAllBytes($intValSpec, [System.Text.Encoding]::ASCII.GetBytes('{"charshape":1}'))
+
+# VALUE as null.
+$nullValSpec = Join-Path $OutDir 'spec-charshape-null.json'
+[System.IO.File]::WriteAllBytes($nullValSpec, [System.Text.Encoding]::ASCII.GetBytes('{"charshape":null}'))
+
+# VALUE as string.
+$strValSpec = Join-Path $OutDir 'spec-charshape-str.json'
+[System.IO.File]::WriteAllBytes($strValSpec, [System.Text.Encoding]::ASCII.GetBytes('{"charshape":"x"}'))
+
+# VALUE as array.
+$arrValSpec = Join-Path $OutDir 'spec-charshape-arr.json'
+[System.IO.File]::WriteAllBytes($arrValSpec, [System.Text.Encoding]::ASCII.GetBytes('{"charshape":[]}'))
+
+# Two unregistered keys — does the loop iterate (first crashes) or
+# does something pre-loop crash?
+$twoKeysSpec = Join-Path $OutDir 'spec-two-unreg.json'
+[System.IO.File]::WriteAllBytes($twoKeysSpec, [System.Text.Encoding]::ASCII.GetBytes('{"a":{},"b":{}}'))
+
+Invoke-Probe -Label 'probe 9a  {"a":{}}          -> single-char key (std::map position)' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9a.json') -SpecPath $aKeySpec
+Invoke-Probe -Label 'probe 9b  {"z":{}}          -> late-alphabet key' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9b.json') -SpecPath $zKeySpec
+Invoke-Probe -Label 'probe 9c  {"":{}}           -> empty-string key' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9c.json') -SpecPath $emptyKeySpec
+Invoke-Probe -Label 'probe 9d  {"charshape":1}   -> int value (not object)' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9d.json') -SpecPath $intValSpec
+Invoke-Probe -Label 'probe 9e  {"charshape":null} -> null value' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9e.json') -SpecPath $nullValSpec
+Invoke-Probe -Label 'probe 9f  {"charshape":"x"} -> string value' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9f.json') -SpecPath $strValSpec
+Invoke-Probe -Label 'probe 9g  {"charshape":[]}  -> array value' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9g.json') -SpecPath $arrValSpec
+Invoke-Probe -Label 'probe 9h  {"a":{},"b":{}}   -> two unregistered keys' `
+             -Doc $empty -OutJson (Join-Path $OutDir 'probe9h.json') -SpecPath $twoKeysSpec
+
 Write-Host ""
 Write-Host "=== MATRIX SUMMARY ==="
 Write-Host "(read exit codes per group above; 0=graceful, -1073741819=AV)"
