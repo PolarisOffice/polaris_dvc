@@ -94,6 +94,42 @@ jobs:
           git clone --depth 1 https://github.com/open-source-parsers/jsoncpp.git
           echo "::endgroup::"
 
+      - name: Patch CheckList.cpp null-terminator off-by-one (upstream bug)
+        shell: bash
+        # Root cause of every prior 0xC0000005 crash on non-empty specs.
+        #
+        # Upstream `Source/CheckList.cpp:90-95`:
+        #     buffer = new char[size + 1];   // +1 intended for NUL
+        #     memset(buffer, 0, size);       // <-- BUG: only zeros [0..size-1]
+        #     fread(buffer, size, 1, fp);    //        buffer[size] stays
+        #                                    //        indeterminate.
+        #     ...
+        #     reader.parse(buffer, root);    // char* -> std::string(buffer)
+        #                                    // which calls strlen(buffer).
+        #
+        # std::string(const char*) requires a null-terminated input.
+        # With `{}` (2 bytes), buffer[2] coincidentally reads as 0 from
+        # a fresh small heap allocation → strlen returns 2 → parse OK.
+        # With the 27KB jsonFullSpec, buffer[27056] is not 0 → strlen
+        # walks past the allocation, into unmapped memory → access
+        # violation, exit -1073741819.
+        #
+        # The fix is one character: zero the full size+1 bytes.
+        run: |
+          set -euo pipefail
+          file="dvc/Source/CheckList.cpp"
+          before=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
+          echo "instances before patch: $before"
+          sed -i 's|memset(buffer, 0, size);|memset(buffer, 0, size + 1);|' "$file"
+          after=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
+          echo "instances after patch:  $after"
+          echo "patched line:"
+          grep -n 'memset(buffer' "$file"
+          if [[ "$before" != "1" ]] || [[ "$after" != "0" ]]; then
+              echo "::error::CheckList.cpp patch did not apply as expected (upstream may have fixed this; remove this step)"
+              exit 1
+          fi
+
       - name: Disable stdafx PCH in OWPML vcxprojs (v143 compat shim)
         shell: bash
         # OWPML's sub-project vcxprojs were authored against v141,
