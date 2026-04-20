@@ -527,18 +527,39 @@ jobs:
           $noPrelude = $fullText.Substring($fullText.IndexOf('{'))
           Set-Content $noPreludeSpec -Value $noPrelude -NoNewline
 
-          # Only the `charshape` subtree of jsonFullSpec.
+          # Only the `charshape` subtree of jsonFullSpec — manual
+          # brace-match extraction. We can't use ConvertFrom-Json
+          # here because pwsh's parser is stricter than jsoncpp
+          # (trips on something around charshape.fontsize line 9).
           $charshapeFullSpec = Join-Path $outDir 'spec-charshape-fullsubtree.json'
-          # Crude extract: keep only `"charshape": { ... },` block at top level.
-          # Using regex to match balanced braces at top level.
-          # Simpler: pwsh ConvertFrom-Json strips comments but jsoncpp does too,
-          # so round-trip via objects should be safe.
-          $obj = $noPrelude | ConvertFrom-Json
-          $narrow = [ordered]@{}
-          if ($obj.PSObject.Properties['charshape']) {
-              $narrow['charshape'] = $obj.charshape
+          $csOk = $false
+          try {
+              $keyIdx = $noPrelude.IndexOf('"charshape"')
+              if ($keyIdx -ge 0) {
+                  $colonIdx = $noPrelude.IndexOf(':', $keyIdx)
+                  $oBraceIdx = $noPrelude.IndexOf('{', $colonIdx)
+                  $depth = 0
+                  $i = $oBraceIdx
+                  while ($i -lt $noPrelude.Length) {
+                      $c = $noPrelude[$i]
+                      if ($c -eq '{') { $depth++ }
+                      elseif ($c -eq '}') {
+                          $depth--
+                          if ($depth -eq 0) { break }
+                      }
+                      $i++
+                  }
+                  if ($depth -eq 0) {
+                      $block = $noPrelude.Substring($oBraceIdx, $i - $oBraceIdx + 1)
+                      $spec = '{"charshape":' + $block + '}'
+                      Set-Content $charshapeFullSpec -Value $spec -NoNewline
+                      $csOk = $true
+                      Write-Host "charshape subtree extracted: $((Get-Item $charshapeFullSpec).Length) bytes"
+                  }
+              }
+          } catch {
+              Write-Host "charshape subtree extraction failed: $_"
           }
-          ConvertTo-Json $narrow -Depth 50 -Compress | Set-Content $charshapeFullSpec -NoNewline
 
           # --- helper ---
           function Invoke-Probe {
@@ -602,8 +623,13 @@ jobs:
                        $empty (Join-Path $outDir 'probe6e.json') $noPreludeSpec
 
           # --- Variable D: content subset ---
-          Invoke-Probe 'probe 6f  charshape-only subtree -> problem inside charshape tree?' `
-                       $empty (Join-Path $outDir 'probe6f.json') $charshapeFullSpec
+          if ($csOk) {
+              Invoke-Probe 'probe 6f  charshape-only subtree -> problem inside charshape tree?' `
+                           $empty (Join-Path $outDir 'probe6f.json') $charshapeFullSpec
+          } else {
+              Write-Host "::group::probe 6f  SKIPPED (subtree extraction failed during setup)"
+              Write-Host "::endgroup::"
+          }
 
           Write-Host ""
           Write-Host "=== MATRIX SUMMARY ==="
