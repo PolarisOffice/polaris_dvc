@@ -94,67 +94,15 @@ jobs:
           git clone --depth 1 https://github.com/open-source-parsers/jsoncpp.git
           echo "::endgroup::"
 
-      - name: Patch CheckList.cpp upstream bugs (null-terminator + end() check)
-        shell: bash
-        # Two separate upstream C++ bugs, both in `Source/CheckList.cpp`
-        # :parsing(). Run #26 proved fix A alone wasn't enough — the
-        # crash survived. Run #25 probe 5 diagnosis + sanity-diffing
-        # spec vs map keys revealed fix B as the actual cause.
-        #
-        # --- Fix A: null-terminator off-by-one ---
-        # Line 90-92:  new char[size+1]; memset(...,size); fread(...,size,...)
-        # leaves buffer[size] indeterminate. Then reader.parse(buffer,root)
-        # constructs std::string(buffer) via strlen — which reads past
-        # the allocation. Real latent UB; Release heap happens to zero
-        # small allocations but not 27KB ones. Kept defensively.
-        #
-        # --- Fix B: missing end() check (the ACTUAL crash) ---
-        # Line 107-109:
-        #     mapIter = checkListMapData.find(members[i]);
-        #     switch (mapIter->second)         // <-- UB if end()
-        #
-        # `sample/jsonFullSpec.json` has 22 top-level keys; the static
-        # `checkListMapData` in CheckList.cpp only registers 21 of them
-        # ("objproperty" + several others). When the parse loop hits
-        # `objproperty` as the 4th member, find returns end(), and
-        # `mapIter->second` dereferences past-the-end → access
-        # violation. Identified by enumerating both sets and diffing.
-        #
-        # Fix: guard with `if (mapIter == end()) continue;` before
-        # the switch. Skips unrecognized keys cleanly.
-        run: |
-          set -euo pipefail
-          file="dvc/Source/CheckList.cpp"
-
-          echo "--- applying fix A (null-terminator) ---"
-          a_before=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
-          sed -i 's|memset(buffer, 0, size);|memset(buffer, 0, size + 1);|' "$file"
-          a_after=$(grep -c 'memset(buffer, 0, size);' "$file" || true)
-          echo "  before=$a_before after=$a_after"
-
-          echo "--- applying fix B (end() check) ---"
-          b_target='switch (mapIter->second)'
-          b_before=$(grep -c "$b_target" "$file" || true)
-          # Insert the guard on its own line immediately before the switch,
-          # matching the switch's 12-space indentation.
-          sed -i '/switch (mapIter->second)/i\
-            if (mapIter == checkListMapData.end()) continue;' "$file"
-          b_guards=$(grep -c 'mapIter == checkListMapData.end()) continue' "$file" || true)
-          b_switch_after=$(grep -c "$b_target" "$file" || true)
-          echo "  switches before=$b_before  switches after=$b_switch_after  guards=$b_guards"
-
-          echo "--- patched lines ---"
-          grep -n 'memset(buffer\|mapIter == checkListMapData\|switch (mapIter' "$file"
-
-          # Fail loudly if either sed didn't land as expected.
-          if [[ "$a_before" != "1" ]] || [[ "$a_after" != "0" ]]; then
-              echo "::error::fix A did not apply"
-              exit 1
-          fi
-          if [[ "$b_before" != "1" ]] || [[ "$b_switch_after" != "1" ]] || [[ "$b_guards" != "1" ]]; then
-              echo "::error::fix B did not apply"
-              exit 1
-          fi
+      # Both prior attempts to patch upstream CheckList.cpp (#26
+      # null-terminator fix, #27 end()-check fix) were reverted after
+      # empirical testing: probe 5 kept crashing with the same exit
+      # code -1073741819 regardless. The user's methodological note —
+      # "stop pattern-matching on suspicious lines, diversify probes
+      # first" — was correct. Going back to an unmodified upstream
+      # binary; the enriched probe matrix in the parity job (probes
+      # 6a-6g) will isolate the actual crash trigger empirically
+      # before any source-level change is considered again.
 
       - name: Disable stdafx PCH in OWPML vcxprojs (v143 compat shim)
         shell: bash
@@ -488,38 +436,55 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length | Format-Table -AutoSize
 
-      - name: Probe 4 — real Hancom Docs HWPX (decisive test)
+      - name: Probe matrix — systematic variable isolation
         shell: pwsh
         continue-on-error: true
-        # The #23 probe ladder proved the binary itself is healthy:
-        # argv parsing, commandParsing, doValidationCheck entry, and
-        # Util::getAbsolutePath(nonexistent) all return cleanly with
-        # exit 0. The crash happens ONLY after getAbsolutePath succeeds,
-        # i.e. inside Checker::Initialize → OWPMLReader reading real
-        # HWPX bytes. That narrows the question to: does OWPMLReader
-        # crash on *every* HWPX or specifically on our synthetic
-        # fixture bytes?
+        # Established facts going into this run:
+        #   - binary basic health: probes 0-3 (no-args/-h/-j/bogus
+        #     paths) all return exit 0 cleanly (#23).
+        #   - `{}` + real HWPX: exit 0 (graceful "초기화 오류",
+        #     CheckList::Load or somewhere in Initialize() returns
+        #     false without crashing). #24, #25, #26, #27.
+        #   - 27KB jsonFullSpec + real HWPX: exit -1073741819 (AV).
+        #     Reproducible across 4 runs.
+        #   - two source-patch attempts (#26 null-terminator, #27
+        #     end()-check) were both reverted after empirical
+        #     disproof — crash survived each time.
         #
-        # Three invocations against real Hancom Docs saves
-        # (`testdata/real-samples/`):
-        #   4a. empty.hwpx — ASCII filename, truly empty doc. This is
-        #       the *primary* diagnostic: does upstream parse ANY real
-        #       HWPX? Minimum content to reduce variable surface.
-        #   4b. 테스트.hwpx — Korean filename, document with text. If
-        #       4a OK and this crashes, either Korean filenames trip
-        #       path handling, or text content (vs empty) matters.
-        #   4c. 테스트.hwpx copied to ASCII — isolates filename vs
-        #       content: if 4c OK and 4b crashes, the Korean path is
-        #       the trigger.
+        # This probe set enumerates the orthogonal variables so the
+        # NEXT decision is evidence-driven, not theory-driven.
         #
-        # Expected outcomes:
-        #   4a OK → our synthetic fixture XML is the root cause of
-        #           every prior 0xC0000005. Next step: diff our
-        #           fixture HWPX against these real HWPX structures,
-        #           find the strict requirement.
-        #   4a crash → upstream OWPMLReader (or hwpx-owpml-model
-        #           linkage) is broken in our CI build itself. Next
-        #           step: Debug-config build + symbols.
+        # Variable A — SIZE only:
+        #   6a. `{}` padded to ~27KB with whitespace. If crash, the
+        #       jsoncpp allocator / heap layout is size-dependent
+        #       (regardless of JSON structure). If OK, size alone
+        #       isn't the trigger.
+        #
+        # Variable B — KEY identity:
+        #   6b. `{"charshape":{}}` — one key KNOWN to be registered
+        #       in checkListMapData. Works → registered keys fine.
+        #   6c. `{"nonexistent":{}}` — one key DEFINITELY not
+        #       registered. Crash → end()-deref theory correct
+        #       (despite #27 patch having failed — in which case the
+        #       sed didn't actually take effect somehow).
+        #   6d. `{"objproperty":{}}` — specific spec key not in map.
+        #       Isolates the exact "missing key" trigger.
+        #
+        # Variable C — PRELUDE format:
+        #   6e. full jsonFullSpec WITHOUT the `[Json schema]\n`
+        #       label. If OK, prelude is the trigger. If crash,
+        #       prelude innocent; JSON body itself is the issue.
+        #
+        # Variable D — content subset (narrows by bisect):
+        #   6f. only `charshape` subtree from jsonFullSpec.
+        #       If crash, problem is inside charshape's tree. If
+        #       OK, crash depends on later top-level keys.
+        #
+        # All probes use empty.hwpx (simplest real HWPX, ASCII path)
+        # as the document side to hold that variable constant. The
+        # invocation pattern is kept identical to prior probes
+        # (`-j -o --file=... spec doc`) so flag surface doesn't
+        # change across this matrix.
         run: |
           $exeItem = Get-ChildItem -Path dvc-bin -Recurse -Filter ExampleWindows.exe | Select-Object -First 1
           if (-not $exeItem) { throw "ExampleWindows.exe not found" }
@@ -529,75 +494,120 @@ jobs:
           $outDir = "testdata\golden\_dvc-output"
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-          # Trivial empty-rules spec — upstream accepts `{}` (spec
-          # parse is JSON-tolerant; empty rule set means "no rules to
-          # run, just parse the HWPX and emit empty violations list").
-          $trivSpec = Join-Path $outDir 'trivial-spec.json'
+          $empty     = 'testdata\real-samples\empty.hwpx'
+          $korean    = 'testdata\real-samples\테스트.hwpx'
+          $fullSpec  = 'schemas\jsonFullSpec.json'
+
+          # --- Construct the synthetic spec files for this matrix ---
+
+          # Trivial empty-rules spec (2 bytes), known graceful.
+          $trivSpec = Join-Path $outDir 'spec-trivial.json'
           '{}' | Out-File -FilePath $trivSpec -Encoding ascii -NoNewline
 
-          $empty    = 'testdata\real-samples\empty.hwpx'
-          $korean   = 'testdata\real-samples\테스트.hwpx'
-          $koreanAs = Join-Path $outDir 'test-ascii.hwpx'
-          Copy-Item $korean $koreanAs -Force
+          # `{}` padded with whitespace to ~27 KB (variable A).
+          $padSpec = Join-Path $outDir 'spec-padded-27k.json'
+          $padded = '{' + (' ' * 27000) + '}'
+          $padded | Out-File -FilePath $padSpec -Encoding ascii -NoNewline
 
+          # Single KNOWN-registered key (variable B.1).
+          $charshapeSpec = Join-Path $outDir 'spec-charshape-only.json'
+          '{"charshape":{}}' | Out-File -FilePath $charshapeSpec -Encoding ascii -NoNewline
+
+          # Single UNREGISTERED key (variable B.2).
+          $nonexistentSpec = Join-Path $outDir 'spec-nonexistent.json'
+          '{"nonexistent":{}}' | Out-File -FilePath $nonexistentSpec -Encoding ascii -NoNewline
+
+          # Specific spec key not in map (variable B.3).
+          $objpropSpec = Join-Path $outDir 'spec-objproperty.json'
+          '{"objproperty":{}}' | Out-File -FilePath $objpropSpec -Encoding ascii -NoNewline
+
+          # Full jsonFullSpec with the `[Json schema]` prelude stripped.
+          $noPreludeSpec = Join-Path $outDir 'spec-nofullprelude.json'
+          $fullText = Get-Content $fullSpec -Raw
+          $noPrelude = $fullText.Substring($fullText.IndexOf('{'))
+          Set-Content $noPreludeSpec -Value $noPrelude -NoNewline
+
+          # Only the `charshape` subtree of jsonFullSpec.
+          $charshapeFullSpec = Join-Path $outDir 'spec-charshape-fullsubtree.json'
+          # Crude extract: keep only `"charshape": { ... },` block at top level.
+          # Using regex to match balanced braces at top level.
+          # Simpler: pwsh ConvertFrom-Json strips comments but jsoncpp does too,
+          # so round-trip via objects should be safe.
+          $obj = $noPrelude | ConvertFrom-Json
+          $narrow = [ordered]@{}
+          if ($obj.PSObject.Properties['charshape']) {
+              $narrow['charshape'] = $obj.charshape
+          }
+          ConvertTo-Json $narrow -Depth 50 -Compress | Set-Content $charshapeFullSpec -NoNewline
+
+          # --- helper ---
           function Invoke-Probe {
-              param(
-                  [string]$label,
-                  [string]$doc,
-                  [string]$outJson,
-                  [string]$specPath = ''
-              )
-              # Default to the trivial `{}` spec if caller doesn't
-              # override. Probe 5 passes the canonical jsonFullSpec.
-              if (-not $specPath) { $specPath = $trivSpec }
+              param([string]$label, [string]$doc, [string]$outJson, [string]$specPath)
               Write-Host "::group::$label"
-              Write-Host "  doc:  $doc"
-              Write-Host "  size: $((Get-Item $doc).Length) bytes"
+              Write-Host "  doc:  $doc ($((Get-Item $doc).Length) bytes)"
               Write-Host "  spec: $specPath ($((Get-Item $specPath).Length) bytes)"
               & $exe -j -o "--file=$outJson" $specPath $doc 2>&1 | ForEach-Object { Write-Host "  > $_" }
               Write-Host "  exit_code=$LASTEXITCODE"
               if (Test-Path $outJson) {
-                  Write-Host "  --- OUTPUT PRODUCED ---"
-                  Get-Content $outJson | ForEach-Object { Write-Host "  $_" }
+                  $len = (Get-Item $outJson).Length
+                  Write-Host "  --- OUTPUT PRODUCED ($len bytes) ---"
+                  Get-Content $outJson | Select-Object -First 5 | ForEach-Object { Write-Host "  $_" }
+                  if ($len -gt 200) { Write-Host "  ...(truncated)" }
               } else {
                   Write-Host "  (no output file produced)"
               }
               Write-Host "::endgroup::"
           }
 
-          Invoke-Probe "probe 4a - empty.hwpx (ASCII path, empty doc)" `
-                       $empty    (Join-Path $outDir 'probe4a.json')
-          Invoke-Probe "probe 4b - 테스트.hwpx (Korean path, has text)" `
-                       $korean   (Join-Path $outDir 'probe4b.json')
-          Invoke-Probe "probe 4c - 테스트.hwpx copied to ASCII path" `
-                       $koreanAs (Join-Path $outDir 'probe4c.json')
-
-          # Probe 4 with `{}` spec returned "초기화 진행에 오류가 있습니다"
-          # graceful-failure (exit 0, no output). That means
-          # Checker::Initialize() returned false — either because
-          # rule-list load rejected `{}`, OR because OWPMLReader
-          # rejected the HWPX. We can't tell which without a real
-          # spec. Probe 5 pairs the same real HWPX with the upstream
-          # canonical spec `schemas/jsonFullSpec.json` — identical to
-          # `third_party/dvc-upstream/sample/jsonFullSpec.json`. If
-          # 5 still prints the same Korean message, rule-list load
-          # was the `{}` failure and OWPMLReader is fine. If 5
-          # CRASHES (exit -1073741819), we've isolated the crash to
-          # OWPMLReader+real HWPX. If 5 succeeds with real JSON
-          # output, the crash was specific to our synthetic fixtures.
-          Write-Host ""
-          Write-Host "=== probe 5: real HWPX + canonical upstream spec ==="
-          $fullSpec = 'schemas\jsonFullSpec.json'
-          if (Test-Path $fullSpec) {
-              Invoke-Probe "probe 5a - empty.hwpx + jsonFullSpec" `
-                           $empty    (Join-Path $outDir 'probe5a.json') `
-                           $fullSpec
-              Invoke-Probe "probe 5b - 테스트.hwpx + jsonFullSpec" `
-                           $korean   (Join-Path $outDir 'probe5b.json') `
-                           $fullSpec
+          # Third real-HWPX sample — a complex government press
+          # release (3.1 MB, 16 files, many pages). Finds the ONE
+          # by size so we don't care about exact filename.
+          $complex = Get-ChildItem -Path 'testdata\real-samples' -Filter '*.hwpx' |
+                       Where-Object { $_.Length -gt 1MB } | Select-Object -First 1
+          if ($complex) {
+              $complexPath = $complex.FullName
+              Write-Host "complex sample: $($complex.Name) ($($complex.Length) bytes)"
           } else {
-              Write-Host "schemas/jsonFullSpec.json not found, skipping probe 5"
+              $complexPath = $null
           }
+
+          # --- baseline re-runs (previously-known behavior) ---
+          Invoke-Probe 'probe 4a  baseline: empty.hwpx + `{}`    (expect: exit 0, no output)' `
+                       $empty (Join-Path $outDir 'probe4a.json') $trivSpec
+          Invoke-Probe 'probe 5a  baseline: empty.hwpx + jsonFullSpec (expect: CRASH)' `
+                       $empty (Join-Path $outDir 'probe5a.json') $fullSpec
+
+          # --- Additional HWPX variable: complex real-world doc ---
+          if ($complexPath) {
+              Invoke-Probe 'probe 4d  complex.hwpx + `{}`       -> graceful hold on larger HWPX?' `
+                           $complexPath (Join-Path $outDir 'probe4d.json') $trivSpec
+              Invoke-Probe 'probe 5c  complex.hwpx + jsonFullSpec -> crash invariant to HWPX size?' `
+                           $complexPath (Join-Path $outDir 'probe5c.json') $fullSpec
+          }
+
+          # --- Variable A: size only ---
+          Invoke-Probe 'probe 6a  {padded-27k} spec     -> isolates SIZE' `
+                       $empty (Join-Path $outDir 'probe6a.json') $padSpec
+
+          # --- Variable B: key identity ---
+          Invoke-Probe 'probe 6b  {"charshape":{}}      -> known-registered key' `
+                       $empty (Join-Path $outDir 'probe6b.json') $charshapeSpec
+          Invoke-Probe 'probe 6c  {"nonexistent":{}}    -> known-unregistered key' `
+                       $empty (Join-Path $outDir 'probe6c.json') $nonexistentSpec
+          Invoke-Probe 'probe 6d  {"objproperty":{}}    -> spec key not in map' `
+                       $empty (Join-Path $outDir 'probe6d.json') $objpropSpec
+
+          # --- Variable C: prelude ---
+          Invoke-Probe 'probe 6e  jsonFullSpec no-prelude -> is `[Json schema]` the trigger?' `
+                       $empty (Join-Path $outDir 'probe6e.json') $noPreludeSpec
+
+          # --- Variable D: content subset ---
+          Invoke-Probe 'probe 6f  charshape-only subtree -> problem inside charshape tree?' `
+                       $empty (Join-Path $outDir 'probe6f.json') $charshapeFullSpec
+
+          Write-Host ""
+          Write-Host "=== MATRIX SUMMARY ==="
+          Write-Host "(read exit codes per group above; 0=graceful, -1073741819=AV)"
 
       - name: Single-fixture probe (cmd.exe, 01_clean)
         shell: cmd
