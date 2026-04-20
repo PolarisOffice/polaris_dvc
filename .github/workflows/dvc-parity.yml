@@ -1,48 +1,52 @@
 name: DVC parity (Windows)
 
-# Builds upstream `hancom-io/dvc` on a Windows runner and runs the
-# resulting ExampleWindows.exe against every fixture under
-# `testdata/golden/`. Outputs are uploaded as artifacts and soft-diffed
-# against our committed `expected.json` so we can see where polaris'
-# engine diverges from DVC.exe without blocking the main CI pipeline.
+# Builds upstream `hancom-io/dvc` on a Windows runner, publishes the
+# resulting binary set as a reusable artifact, and runs the binary
+# against every fixture under `testdata/golden/`.
 #
-# Manual-trigger (workflow_dispatch) + runs on pushes to main only.
-# The first iterations are expected to fail at the build step — this is
-# a research task, not a blocker.
+# Two jobs:
+#   build  — compiles DVCModel.dll + ExampleWindows.exe, stages runtime
+#            DLLs, uploads the whole kit as `dvc-windows-x86-<run_id>`.
+#            Useful on its own even when parity verification is offline:
+#            downstream consumers (or humans without Windows) can pull
+#            this artifact instead of building from source.
+#   parity — downloads the artifact and runs DVC.exe against each
+#            fixture, capturing stdout/stderr/exit-code per invocation,
+#            and soft-diffing the outputs against committed expected.json.
+#
+# Historical note: prior iterations of this workflow had
+# `continue-on-error: true` at the job level, which masked runtime
+# failures as green — the build was actually succeeding since commit
+# #TODO but the binary exited silently for every fixture. Failures now
+# surface. See `docs/dvc-parity-status.md` for the diagnostic timeline.
 
 on:
-  # Manual-only for now. The recommended path is to run the
-  # equivalent logic on a real Windows machine via
-  # `scripts/parity-windows.ps1` — iteration there is ~5x faster
-  # than on a windows-latest runner and the log surface is
-  # immediately available. Re-enable `push:` here only after the
-  # build-configuration issues documented in
-  # `docs/dvc-parity-status.md` are resolved.
   workflow_dispatch:
     inputs:
       upstream_ref:
         description: "Upstream hancom-io/dvc ref to build (branch/tag/SHA)"
         default: "main"
         required: false
+  # Triggered on workflow/script changes so artifact stays fresh.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dvc-parity.yml"
+      - "scripts/parity-windows.ps1"
+      - "scripts/diff-dvc-outputs.sh"
 
 permissions:
   contents: read
 
 jobs:
-  parity:
-    name: Build DVC.exe and diff against fixtures
+  build:
+    name: Build DVC binary set
     runs-on: windows-latest
-    # Research job — we want the artifact upload to happen even when the
-    # build or the diff surfaces divergences.
-    continue-on-error: true
     env:
       UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+    outputs:
+      artifact_name: ${{ steps.publish.outputs.artifact_name }}
     steps:
-      - name: Checkout polaris
-        uses: actions/checkout@v4
-        with:
-          path: polaris
-
       - name: Checkout upstream hancom-io/dvc
         uses: actions/checkout@v4
         with:
@@ -52,11 +56,10 @@ jobs:
 
       - name: Fetch OSS dependencies
         shell: bash
-        # Replicates upstream `update_oss.bat` but clones the public repos
-        # without an auth token (the bat wraps them with a PAT solely to
-        # work around corporate network policies). Also fixes the bat's
-        # bug where the jsoncpp reset is performed inside the rapidjson
-        # directory.
+        # Replicates upstream `update_oss.bat` but clones without a PAT
+        # (the bat wraps them with a token solely to work around
+        # corporate network policies). Also fixes the bat's bug where
+        # the jsoncpp reset runs inside the rapidjson directory.
         run: |
           set -euo pipefail
           cd dvc
@@ -76,9 +79,6 @@ jobs:
 
       - name: Amalgamate jsoncpp
         shell: cmd
-        # jsoncpp's Visual Studio build path uses the amalgamated single
-        # header + source produced by this python script. Do it here so
-        # msbuild finds the files where the .vcxproj expects them.
         run: |
           cd dvc\opensource\jsoncpp
           python amalgamate.py || echo "amalgamate.py failed — job will likely fail downstream"
@@ -86,12 +86,8 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Disable stdafx PCH in OWPML vcxprojs only
+      - name: Disable stdafx PCH in OWPML vcxprojs
         shell: bash
-        # OWPML uses the v141-default `stdafx.h`/`stdafx.cpp` PCH pair
-        # which v143 no longer auto-recognizes (it now defaults to
-        # `pch.h`). Disable PCH only for those projects — DVCModel itself
-        # uses `pch.h` correctly and stays untouched.
         run: |
           set -euo pipefail
           cd dvc/opensource/hwpx-owpml-model
@@ -107,12 +103,6 @@ jobs:
 
       - name: Install jsoncpp via vcpkg + patch vcxproj paths
         shell: pwsh
-        # Install jsoncpp at vcpkg's default location, then rewrite the
-        # upstream DVCModel.vcxproj's Release|Win32 AdditionalInclude
-        # Directories / AdditionalLibraryDirectories to point at that
-        # install. Env var-based INCLUDE/LIB injection didn't survive
-        # MSBuild's rebuild of its internal tool environment, so we
-        # edit the vcxproj directly.
         run: |
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if (-not $vcpkgRoot) { $vcpkgRoot = 'C:\vcpkg' }
@@ -121,32 +111,19 @@ jobs:
           $include = Join-Path $pkg 'include'
           $includeJson = Join-Path $pkg 'include\json'
           $lib = Join-Path $pkg 'lib'
-          Write-Host "include root: $include"
-          Write-Host "include/json: $includeJson"
-          Write-Host "lib root:     $lib"
           if (!(Test-Path $includeJson)) { throw "missing: $includeJson" }
           if (!(Test-Path $lib)) { throw "missing: $lib" }
-          # Replace the upstream include path with BOTH `<pkg>/include`
-          # and `<pkg>/include/json` — source files alternate between
-          # `#include "json.h"` (needs the nested path) and
-          # `#include "json/json.h"` (needs the parent).
           $bothInc = "$include;$includeJson"
-          # NOTE: PowerShell's `-replace` regex REPLACEMENT string
-          # treats `\` as literal — do NOT double-escape, or the
-          # vcxproj ends up with broken paths like `C:\\vcpkg\\...`.
-          # Only `$` needs escaping (via `$$`); Windows paths don't
-          # contain `$` so a plain substitution is safe.
           $vcxproj = 'dvc\DVCModel.vcxproj'
           $text = Get-Content $vcxproj -Raw
           $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', $bothInc
           $text = $text -replace '\./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', $lib
-          # Defensive: Debug|Win32 flavor.
           $text = $text -replace '\./opensource/jsoncpp/include/json', $bothInc
           $text = $text -replace '\./opensource/jsoncpp/json_git/lib/Release', $lib
           Set-Content -Path $vcxproj -Value $text -NoNewline
-          Write-Host "---patched vcxproj snippet---"
-          Select-String -Path $vcxproj -Pattern 'AdditionalIncludeDirectories|AdditionalLibraryDirectories' |
-            ForEach-Object { Write-Host "  $($_.Line.Trim())" }
+          # Expose the vcpkg package dir downstream so runtime DLL
+          # staging can find it.
+          "VCPKG_PKG_DIR=$pkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Detect installed Windows SDK
         id: sdk
@@ -166,18 +143,6 @@ jobs:
 
       - name: Build DVCModel + ExampleWindows (x86 Release)
         shell: cmd
-        # Platform=x86 (not x64) — upstream's x64 ItemDefinitionGroups
-        # in hwpx-owpml-model's vcxprojs are incomplete (missing
-        # AdditionalIncludeDirectories), so x64 builds fail with
-        # "Cannot open include file: 'OWPMLUtil/HncDefine.h'" even
-        # though the headers are on disk. The Win32 (aka x86 at
-        # solution level) configurations carry `./;./../;./../Common/`
-        # correctly. DVCModel.sln surfaces x86/x64 (not Win32);
-        # MSBuild maps x86 → Win32 for the underlying vcxprojs.
-        #
-        # PlatformToolset: upstream pins v141 (VS2017); retarget to
-        # v143 (VS2022) since v141 isn't on the runner.
-        # WindowsTargetPlatformVersion: detected dynamically.
         run: |
           cd dvc
           msbuild DVCModel.sln ^
@@ -187,57 +152,75 @@ jobs:
             /p:WindowsTargetPlatformVersion=${{ steps.sdk.outputs.ver }} ^
             /m /v:minimal
 
-      - name: Locate ExampleWindows.exe
-        id: find-exe
-        shell: bash
+      - name: Inspect DLL dependency tree (dumpbin /dependents)
+        shell: pwsh
         run: |
-          set -eu
-          exe=$(find dvc -type f -name 'ExampleWindows.exe' | head -1)
-          echo "exe=$exe" >> "$GITHUB_OUTPUT"
-          echo "Found: $exe"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\*\bin\Hostx64\x86\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin -or -not (Test-Path $dumpbin)) {
+            Write-Host "dumpbin not found; skipping dependency inspection"
+            exit 0
+          }
+          Write-Host "dumpbin: $dumpbin"
+          foreach ($t in @("dvc\Release\ExampleWindows.exe", "dvc\Release\DVCModel.dll")) {
+            if (Test-Path $t) {
+              Write-Host "::group::$t dependencies"
+              & $dumpbin /dependents $t
+              Write-Host "::endgroup::"
+            }
+          }
 
-      - name: Run DVC against each golden fixture
-        shell: bash
-        env:
-          DVC_EXE: ${{ steps.find-exe.outputs.exe }}
+      - name: Stage runtime DLLs next to ExampleWindows.exe
+        shell: pwsh
+        # Goal: make dvc\Release\ a self-contained directory — any DLL
+        # the exe needs at load time must live here. Vcpkg's packages
+        # dir separates static libs (`lib/`) from runtime DLLs (`bin/`);
+        # triplet x86-windows defaults to dynamic linking so jsoncpp.dll
+        # ships in bin/. We copy those + probe common MSVC runtime DLLs.
         run: |
-          set -u
-          mkdir -p polaris/testdata/golden/_dvc-output
-          for case in polaris/testdata/golden/*/; do
-            name=$(basename "$case")
-            [[ "$name" = "_dvc-output" ]] && continue
-            [[ ! -f "$case/doc.hwpx" ]] && continue
-            out="polaris/testdata/golden/_dvc-output/${name}.json"
-            echo "::group::$name"
-            "$DVC_EXE" -j -a \
-              "--file=$out" \
-              "-t" "$case/spec.json" \
-              "$case/doc.hwpx" \
-              || echo "DVC exited non-zero for $name (may be intentional per rule violations)"
-            echo "---"
-            if [[ -f "$out" ]]; then
-              cat "$out"
-            else
-              echo "(no output file produced)"
-            fi
-            echo "::endgroup::"
-          done
+          if (-not (Test-Path "dvc\Release\ExampleWindows.exe")) {
+            throw "Build didn't produce ExampleWindows.exe — abort staging"
+          }
+          $pkgBin = Join-Path $env:VCPKG_PKG_DIR 'bin'
+          if (Test-Path $pkgBin) {
+            Write-Host "Copying runtime DLLs from vcpkg bin: $pkgBin"
+            Get-ChildItem "$pkgBin\*.dll" | ForEach-Object {
+              Copy-Item $_.FullName "dvc\Release\" -Force
+              Write-Host "  staged: $($_.Name) ($($_.Length) bytes)"
+            }
+          } else {
+            Write-Host "No $pkgBin — static-linked build, skipping runtime DLL copy"
+          }
+          Write-Host "---"
+          Write-Host "Final dvc\Release\ contents:"
+          Get-ChildItem "dvc\Release\" | Select-Object Name, Length |
+            Format-Table -AutoSize
 
-      - name: Soft-diff DVC output vs committed expected.json
-        shell: bash
+      - name: Smoke-test ExampleWindows.exe (no args → prints Hello World)
+        shell: cmd
+        continue-on-error: true
+        # A bare invocation should print "Hello World!" and exit — upstream
+        # `ExampleWindows.cpp` does this unconditionally before CLI
+        # processing. If this step produces no output we have a DLL-load
+        # failure (process aborts before reaching main/wmain).
         run: |
-          cd polaris
-          bash scripts/diff-dvc-outputs.sh testdata/golden testdata/golden/_dvc-output \
-            | tee testdata/golden/_dvc-output/_diff-summary.txt
+          dvc\Release\ExampleWindows.exe
+          echo exit_code=%errorlevel%
 
-      - name: Upload DVC outputs + diff summary
-        if: always()
+      - name: Publish binary artifact
+        id: publish
         uses: actions/upload-artifact@v4
         with:
-          name: dvc-parity-outputs-${{ github.run_id }}
+          name: dvc-windows-x86-${{ github.run_id }}
           path: |
-            polaris/testdata/golden/_dvc-output/
-          if-no-files-found: warn
+            dvc/Release/*.exe
+            dvc/Release/*.dll
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Set artifact output
+        shell: bash
+        run: echo "artifact_name=dvc-windows-x86-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload build logs on failure
         if: failure()
@@ -248,3 +231,87 @@ jobs:
             dvc/**/*.log
             dvc/**/BuildLog.htm
           if-no-files-found: ignore
+
+  parity:
+    name: Run DVC against golden fixtures
+    needs: build
+    runs-on: windows-latest
+    # Parity-diff may legitimately differ from our own expected.json
+    # (that's the whole point of the comparison). Don't fail the job on
+    # diffs — only on infrastructure / binary-invocation failures.
+    steps:
+      - name: Checkout polaris
+        uses: actions/checkout@v4
+
+      - name: Download DVC binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: dvc-bin
+
+      - name: List artifact contents
+        shell: pwsh
+        run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length
+
+      - name: Run DVC against each golden fixture
+        shell: pwsh
+        # Per-invocation bookkeeping:
+        #   - exit code captured via $LASTEXITCODE
+        #   - stderr redirected to <case>.stderr.log
+        #   - stdout to <case>.stdout.log
+        #   - the engine's JSON result (if produced) to <case>.json
+        # cmd.exe invocation (over bash) because `wmain` on Windows gets
+        # argv via UTF-16 directly when launched this way — no Git-Bash
+        # narrow→wide conversion issues on Hangul paths / content.
+        run: |
+          $exe = Resolve-Path "dvc-bin\ExampleWindows.exe"
+          $outDir = "testdata\golden\_dvc-output"
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          $cases = Get-ChildItem "testdata\golden" -Directory |
+            Where-Object { $_.Name -ne "_dvc-output" -and (Test-Path (Join-Path $_.FullName "doc.hwpx")) }
+          Write-Host "Processing $($cases.Count) fixtures"
+          foreach ($case in $cases) {
+            $name = $case.Name
+            $doc = Join-Path $case.FullName "doc.hwpx"
+            $spec = Join-Path $case.FullName "spec.json"
+            $out = Join-Path $outDir "$name.json"
+            $stderrLog = Join-Path $outDir "$name.stderr.log"
+            $stdoutLog = Join-Path $outDir "$name.stdout.log"
+            Write-Host "::group::$name"
+            $p = Start-Process -FilePath $exe `
+                               -ArgumentList @("-j", "--file=$out", "-t", $spec, $doc) `
+                               -NoNewWindow -Wait -PassThru `
+                               -RedirectStandardOutput $stdoutLog `
+                               -RedirectStandardError $stderrLog
+            Write-Host "exit_code=$($p.ExitCode)"
+            if (Test-Path $stdoutLog) {
+              $content = Get-Content $stdoutLog -Raw
+              if ($content) { Write-Host "--- stdout ---"; Write-Host $content }
+            }
+            if (Test-Path $stderrLog) {
+              $content = Get-Content $stderrLog -Raw
+              if ($content) { Write-Host "--- stderr ---"; Write-Host $content }
+            }
+            if (Test-Path $out) {
+              Write-Host "--- output.json ---"
+              Get-Content $out
+            } else {
+              Write-Host "(no output.json produced)"
+            }
+            Write-Host "::endgroup::"
+          }
+
+      - name: Soft-diff DVC output vs committed expected.json
+        shell: bash
+        continue-on-error: true
+        run: |
+          bash scripts/diff-dvc-outputs.sh testdata/golden testdata/golden/_dvc-output \
+            | tee testdata/golden/_dvc-output/_diff-summary.txt
+
+      - name: Upload DVC outputs + per-fixture logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dvc-parity-outputs-${{ github.run_id }}
+          path: testdata/golden/_dvc-output/
+          if-no-files-found: warn
