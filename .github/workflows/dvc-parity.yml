@@ -383,6 +383,81 @@ jobs:
         shell: pwsh
         run: Get-ChildItem -Recurse dvc-bin | Select-Object FullName, Length | Format-Table -AutoSize
 
+      - name: Probe 4 — real Hancom Docs HWPX (decisive test)
+        shell: pwsh
+        continue-on-error: true
+        # The #23 probe ladder proved the binary itself is healthy:
+        # argv parsing, commandParsing, doValidationCheck entry, and
+        # Util::getAbsolutePath(nonexistent) all return cleanly with
+        # exit 0. The crash happens ONLY after getAbsolutePath succeeds,
+        # i.e. inside Checker::Initialize → OWPMLReader reading real
+        # HWPX bytes. That narrows the question to: does OWPMLReader
+        # crash on *every* HWPX or specifically on our synthetic
+        # fixture bytes?
+        #
+        # Three invocations against real Hancom Docs saves
+        # (`testdata/real-samples/`):
+        #   4a. empty.hwpx — ASCII filename, truly empty doc. This is
+        #       the *primary* diagnostic: does upstream parse ANY real
+        #       HWPX? Minimum content to reduce variable surface.
+        #   4b. 테스트.hwpx — Korean filename, document with text. If
+        #       4a OK and this crashes, either Korean filenames trip
+        #       path handling, or text content (vs empty) matters.
+        #   4c. 테스트.hwpx copied to ASCII — isolates filename vs
+        #       content: if 4c OK and 4b crashes, the Korean path is
+        #       the trigger.
+        #
+        # Expected outcomes:
+        #   4a OK → our synthetic fixture XML is the root cause of
+        #           every prior 0xC0000005. Next step: diff our
+        #           fixture HWPX against these real HWPX structures,
+        #           find the strict requirement.
+        #   4a crash → upstream OWPMLReader (or hwpx-owpml-model
+        #           linkage) is broken in our CI build itself. Next
+        #           step: Debug-config build + symbols.
+        run: |
+          $exeItem = Get-ChildItem -Path dvc-bin -Recurse -Filter ExampleWindows.exe | Select-Object -First 1
+          if (-not $exeItem) { throw "ExampleWindows.exe not found" }
+          $exe = $exeItem.FullName
+          Write-Host "using: $exe"
+
+          $outDir = "testdata\golden\_dvc-output"
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+
+          # Trivial empty-rules spec — upstream accepts `{}` (spec
+          # parse is JSON-tolerant; empty rule set means "no rules to
+          # run, just parse the HWPX and emit empty violations list").
+          $trivSpec = Join-Path $outDir 'trivial-spec.json'
+          '{}' | Out-File -FilePath $trivSpec -Encoding ascii -NoNewline
+
+          $empty    = 'testdata\real-samples\empty.hwpx'
+          $korean   = 'testdata\real-samples\테스트.hwpx'
+          $koreanAs = Join-Path $outDir 'test-ascii.hwpx'
+          Copy-Item $korean $koreanAs -Force
+
+          function Invoke-Probe {
+              param([string]$label, [string]$doc, [string]$outJson)
+              Write-Host "::group::$label"
+              Write-Host "  doc:  $doc"
+              Write-Host "  size: $((Get-Item $doc).Length) bytes"
+              & $exe -j -o "--file=$outJson" $trivSpec $doc 2>&1 | ForEach-Object { Write-Host "  > $_" }
+              Write-Host "  exit_code=$LASTEXITCODE"
+              if (Test-Path $outJson) {
+                  Write-Host "  --- OUTPUT PRODUCED ---"
+                  Get-Content $outJson | ForEach-Object { Write-Host "  $_" }
+              } else {
+                  Write-Host "  (no output file produced)"
+              }
+              Write-Host "::endgroup::"
+          }
+
+          Invoke-Probe "probe 4a - empty.hwpx (ASCII path, empty doc)" `
+                       $empty    (Join-Path $outDir 'probe4a.json')
+          Invoke-Probe "probe 4b - 테스트.hwpx (Korean path, has text)" `
+                       $korean   (Join-Path $outDir 'probe4b.json')
+          Invoke-Probe "probe 4c - 테스트.hwpx copied to ASCII path" `
+                       $koreanAs (Join-Path $outDir 'probe4c.json')
+
       - name: Single-fixture probe (cmd.exe, 01_clean)
         shell: cmd
         continue-on-error: true
