@@ -456,7 +456,7 @@ jobs:
 
       - name: Publish binary artifact
         id: publish
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dvc-windows-x86-${{ github.run_id }}
           path: ${{ steps.locate.outputs.stage_dir }}/**
@@ -469,7 +469,7 @@ jobs:
 
       - name: Upload build logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: msbuild-logs-${{ github.run_id }}
           path: |
@@ -673,7 +673,7 @@ jobs:
 
       - name: Upload DVC outputs + per-fixture logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dvc-parity-outputs-${{ github.run_id }}
           path: testdata/golden/_dvc-output/
@@ -681,7 +681,7 @@ jobs:
 
       - name: Upload DVC crash dumps
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dvc-crashdumps-${{ github.run_id }}
           path: dvc-crashdumps/
