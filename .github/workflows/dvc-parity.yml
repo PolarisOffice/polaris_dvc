@@ -4,23 +4,23 @@ name: DVC parity (Windows)
 # against every fixture under `testdata/golden/`, and publish the
 # binary set as a reusable artifact.
 #
-# The build recipe is the one upstream's DVCModel.vcxproj actually
-# describes for **Debug|Win32** (the only platform/config combination
-# with a complete, coherent AdditionalIncludeDirectories set across
-# every sub-project). We build **Release|Win32** — upstream's
-# Release|Win32 has the same project layout and compiles fine, but
-# at some point someone swapped its jsoncpp paths from
-# `./opensource/jsoncpp/...` (CMake-from-source, which is what the
-# upstream README walks through) to
-# `./opensource/vcpkg/packages/jsoncpp_x86-windows/...` (a private
-# developer layout that CI never populates). That path swap is the
-# single reason every CI attempt was crashing with 0xC0000005 inside
-# `setCommand(argv)`: the vcpkg jsoncpp version installed on the
-# runner had a different class layout than whatever jsoncpp headers
-# the prior dev's build compiled against. We rewrite those four
-# paths back to the CMake-from-source layout — matching upstream's
-# Debug|Win32 config exactly — and build the pinned jsoncpp source
-# into the expected location.
+# The build recipe combines several upstream-repro fixes. Even with
+# jsoncpp rebuilt from source and path rewrites applied (runs #15-#22),
+# every args-bearing invocation crashed with 0xC0000005 while the
+# no-args smoke test printed "Hello World!" cleanly. Deep investigation
+# of the upstream sources turned up a DVCModel.vcxproj defect:
+#
+#   export/export.h declares:    #ifdef DVC_EXPORTS  →  __declspec(dllexport)
+#                                #else                →  __declspec(dllimport)
+#   DVCModel.vcxproj defines:    DVCMODEL_EXPORTS   (*not* DVC_EXPORTS)
+#
+# So in the DLL build, `createDVC`/`deleteDVC` are declared *dllimport*
+# inside their own DLL — MSVC emits warning C4273 and the export table
+# is unreliable. This run patches the vcxproj to define `DVC_EXPORTS`
+# *in addition to* the legacy `DVCMODEL_EXPORTS` and adds probe steps
+# (`-h`, `-j`, bogus paths) plus `dumpbin /exports DVCModel.dll` so we
+# can *see* which arg-shape crashes and whether the symbols are
+# actually exported.
 #
 # Why not x64 or v141: upstream's Release|x64 ItemDefinitionGroup is
 # literally empty (no AdditionalIncludeDirectories at all) and
@@ -172,33 +172,43 @@ jobs:
           Get-ChildItem 'json_git\lib\Release' | Format-Table -AutoSize
           Pop-Location
 
-      - name: Point DVCModel.vcxproj at source jsoncpp (undo vcpkg path)
+      - name: Patch DVCModel.vcxproj (jsoncpp paths + DVC_EXPORTS define)
         shell: pwsh
-        # Upstream's Debug|Win32 config references the source-build
-        # paths (`./opensource/jsoncpp/include/json` and
-        # `./opensource/jsoncpp/json_git/lib/Release`) which is what
-        # our build just produced. Release|Win32 (and Debug|x64) were
-        # later patched to point at a private vcpkg layout
-        # (`./opensource/vcpkg/packages/jsoncpp_x86-windows/...`) that
-        # CI can't populate without installing vcpkg's specific
-        # jsoncpp version — which has historically had a different
-        # class layout from the pinned jsoncpp source DVCModel expects
-        # (root cause of prior 0xC0000005 crashes inside setCommand).
-        # Rewrite the Release|Win32 paths back to the source layout.
+        # TWO distinct patches in one step so we only rewrite the file once:
+        #
+        # 1) Swap the vcpkg jsoncpp paths back to the `./opensource/jsoncpp/...`
+        #    source-build layout. Upstream's Debug|Win32 references the
+        #    source-build paths; Release|Win32 and Debug|x64 were later
+        #    patched to `./opensource/vcpkg/packages/jsoncpp_x86-windows/...`
+        #    (a private dev layout that CI can't populate).
+        #
+        # 2) Add `DVC_EXPORTS` to every PreprocessorDefinitions block.
+        #    `export/export.h` gates `__declspec(dllexport)` on DVC_EXPORTS,
+        #    but the upstream vcxproj only defines `DVCMODEL_EXPORTS`, so
+        #    `createDVC`/`deleteDVC` are declared dllimport inside their
+        #    own DLL (MSVC warning C4273, unreliable export table). The
+        #    legacy `DVCMODEL_EXPORTS` is preserved in case some header
+        #    we don't see still references it — we just *add* DVC_EXPORTS.
         run: |
           $vcxproj = 'dvc\DVCModel.vcxproj'
           $text = Get-Content $vcxproj -Raw
-          # Four exact path strings to replace. Using plain -replace
-          # with regex-escaped forward slashes; PowerShell's
-          # replacement string does not interpret backslashes so
-          # Windows paths are passed verbatim.
           $text = $text.Replace('./opensource/vcpkg/packages/jsoncpp_x86-windows/include/json', `
                                 './opensource/jsoncpp/include/json')
           $text = $text.Replace('./opensource/vcpkg/packages/jsoncpp_x86-windows/lib', `
                                 './opensource/jsoncpp/json_git/lib/Release')
+          # Prepend DVC_EXPORTS to every DVCMODEL_EXPORTS occurrence.
+          # Idempotent: matches only `DVCMODEL_EXPORTS;` not already
+          # preceded by `DVC_EXPORTS;`.
+          $text = [regex]::Replace(
+              $text,
+              '(?<!DVC_EXPORTS;)DVCMODEL_EXPORTS;',
+              'DVC_EXPORTS;DVCMODEL_EXPORTS;')
           Set-Content -Path $vcxproj -Value $text -NoNewline
           Write-Host "--- AdditionalIncludeDirectories / AdditionalLibraryDirectories after rewrite ---"
           Select-String -Path $vcxproj -Pattern 'AdditionalIncludeDirectories|AdditionalLibraryDirectories' |
+            ForEach-Object { Write-Host "  $($_.Line.Trim())" }
+          Write-Host "--- PreprocessorDefinitions after rewrite ---"
+          Select-String -Path $vcxproj -Pattern 'PreprocessorDefinitions' |
             ForEach-Object { Write-Host "  $($_.Line.Trim())" }
 
       - name: Build DVCModel.sln (Release / Win32 / v143)
@@ -248,11 +258,15 @@ jobs:
           Write-Host "Final $stage contents:"
           Get-ChildItem $stage | Select-Object Name, Length | Format-Table -AutoSize
 
-      - name: Inspect DLL dependency tree (dumpbin /dependents)
+      - name: Inspect DLL dependency tree + DVCModel.dll exports (dumpbin)
         shell: pwsh
+        # `dumpbin /exports DVCModel.dll` is the diagnostic that tells
+        # us whether the export-macro fix (DVC_EXPORTS) actually took
+        # effect. If `createDVC` and `deleteDVC` show up in the export
+        # table, the fix worked; if not, the DLL is still broken and
+        # args-bearing invocations will keep crashing.
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          # x86 dumpbin host for x86 binaries.
           $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\*\bin\Hostx64\x86\dumpbin.exe' | Select-Object -First 1
           if (-not $dumpbin) {
             Write-Host "dumpbin not found; skipping dependency inspection"
@@ -268,12 +282,64 @@ jobs:
               Write-Host "::endgroup::"
             }
           }
+          $dllPath = Join-Path $stage 'DVCModel.dll'
+          if (Test-Path $dllPath) {
+            Write-Host "::group::DVCModel.dll /exports"
+            & $dumpbin /exports $dllPath
+            Write-Host "::endgroup::"
+          }
 
-      - name: Smoke-test ExampleWindows.exe (no args → prints Hello World)
+      - name: Probe 0 — no args (expect Hello World + exit 0)
         shell: cmd
         continue-on-error: true
+        # Baseline: we've confirmed this succeeds in prior runs. If it
+        # fails here, something upstream of argv parsing broke.
         run: |
+          echo --- probe 0: no args ---
           "${{ steps.locate.outputs.exe_path }}"
+          echo exit_code=%errorlevel%
+
+      - name: Probe 1 — `-h` only (argv parsing, no file I/O)
+        shell: cmd
+        continue-on-error: true
+        # `-h` hits `parsingShortOption` → `setErrorMessage(Help)` and
+        # `commandParsing` returns false. `setCommand` returns the help
+        # text; `doValidationCheck` is NEVER called. If this crashes,
+        # the bug is in wstring handling / CommandParser internals.
+        # If this prints help and exits cleanly, the bug is downstream
+        # (doValidationCheck / Checker / OWPMLReader).
+        run: |
+          echo --- probe 1: -h only ---
+          "${{ steps.locate.outputs.exe_path }}" -h
+          echo exit_code=%errorlevel%
+
+      - name: Probe 2 — `-j` only (one short option, no files)
+        shell: cmd
+        continue-on-error: true
+        # Sets Format=JSON then commandParsing returns successfully
+        # (m_message is empty because no error was set). Then
+        # doValidationCheck proceeds with EMPTY dvcFilepath &
+        # targetFilepath. Util::getAbsolutePath("") hits an edge case —
+        # if that crashes, the bug is in Util::getAbsolutePath.
+        # If DVC prints "Json 파일이 잘못되었습니다" and exits cleanly,
+        # that path is fine.
+        run: |
+          echo --- probe 2: -j only ---
+          "${{ steps.locate.outputs.exe_path }}" -j
+          echo exit_code=%errorlevel%
+
+      - name: Probe 3 — bogus paths (reaches doValidationCheck, files missing)
+        shell: cmd
+        continue-on-error: true
+        # argv parse succeeds → filepaths are set → Util::getAbsolutePath
+        # is called on files that definitely don't exist →
+        # doValidationCheck should print an error and return false
+        # gracefully, WITHOUT constructing a Checker. If this crashes,
+        # Util::getAbsolutePath has a problem with non-existent paths
+        # on Windows.
+        run: |
+          echo --- probe 3: bogus paths ---
+          "${{ steps.locate.outputs.exe_path }}" -j C:\nope\bogus.json C:\nope\bogus.hwpx
           echo exit_code=%errorlevel%
 
       - name: Publish binary artifact
@@ -320,10 +386,14 @@ jobs:
       - name: Single-fixture probe (cmd.exe, 01_clean)
         shell: cmd
         continue-on-error: true
-        # Prior iterations crashed silently here with 0xC0000005 —
-        # jsoncpp ABI skew. After this rewrite the binary links
-        # against the pinned jsoncpp source we built from scratch, so
-        # the import table and the runtime DLL match exactly.
+        # Upstream flag semantics (from CommandParser.cpp::parsingShortOption):
+        #   -j → FormatJSON     -o → AllOption output (ALL conditional fields)
+        # The DVC spec and HWPX paths are *positional* args (first non-flag
+        # → m_dvcFilepath, second → m_targetFilepath). `-t` is NOT a flag
+        # that consumes a value — it's SetOutputOption(Table), which would
+        # emit a different (smaller) field set and fail our byte-diff.
+        # Our golden expected.json files are rendered under AllOption
+        # (CLAUDE.md §3), so we match with `-o`.
         run: |
           for /f "delims=" %%X in ('dir /b /s "dvc-bin\ExampleWindows.exe"') do set EXE=%%X
           echo using: %EXE%
@@ -332,7 +402,7 @@ jobs:
           set OUT=testdata\golden\_dvc-output\01_clean.probe.json
           mkdir testdata\golden\_dvc-output 2>nul
           echo --- running with args ---
-          "%EXE%" -j "--file=%OUT%" -t "%SPEC%" "%DOC%"
+          "%EXE%" -j -o "--file=%OUT%" "%SPEC%" "%DOC%"
           echo exit_code=%errorlevel%
           if exist "%OUT%" (echo --- output file produced --- & type "%OUT%") else (echo no output file)
 
@@ -354,7 +424,8 @@ jobs:
             $spec = Join-Path $case.FullName "spec.json"
             $out = Join-Path $outDir "$name.json"
             Write-Host "::group::$name"
-            $combined = & $exe -j "--file=$out" -t $spec $doc 2>&1
+            # `-o` = AllOption (all conditional fields); spec + doc positional.
+            $combined = & $exe -j -o "--file=$out" $spec $doc 2>&1
             $rc = $LASTEXITCODE
             Write-Host "exit_code=$rc"
             if ($combined) { Write-Host "--- output ---"; $combined | ForEach-Object { Write-Host $_ } }
