@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 use polaris_rhwpdvc_core::engine::{validate as run, CheckProfile, EngineOptions};
+use polaris_rhwpdvc_core::error_codes::ErrorCode;
 use polaris_rhwpdvc_core::output::OutputOption;
 use polaris_rhwpdvc_core::rules::schema::RuleSpec;
 
@@ -98,6 +99,20 @@ pub fn validate(hwpx: &[u8], spec: JsValue, opts: JsValue) -> Result<JsValue, Js
     payload
         .serialize(&ser)
         .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Look up the human-readable description for an `ErrorCode` numeric
+/// value. Mirrors `ErrorCode::text()` from core — single source of truth
+/// for JID → message mapping, so the web UI never drifts from the CLI.
+///
+/// ```js
+/// describeError(11010); // "mimetype is not the first ZIP entry"
+/// describeError(1001);  // "Font size does not match specification"
+/// describeError(99999); // "Rule violation" (generic fallback)
+/// ```
+#[wasm_bindgen(js_name = describeError)]
+pub fn describe_error(code: u32) -> String {
+    ErrorCode::new(code).text().to_string()
 }
 
 /// Same as [`validate`] but returns the XML document string. This is a

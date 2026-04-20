@@ -9,6 +9,7 @@
 import init, {
   validate,
   validateXml,
+  describeError,
 } from "../../crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -372,13 +373,25 @@ function renderJsonResults(list, opts, ms) {
       ]
         .filter(Boolean)
         .join(", ");
+      // Human-readable description via WASM `describeError` (mirrors
+      // the core `ErrorCode::text()` so web UI never drifts from CLI).
+      // `errorText` is the document text at the violation site per
+      // upstream DVC; render it as a quieter secondary line below the
+      // description when present.
+      const desc = escapeHtml(describeError(v.ErrorCode));
+      const docText = v.errorText
+        ? `<div class="doc-text">“${escapeHtml(v.errorText)}”</div>`
+        : "";
       return `
         <tr>
           <td class="error-code">${v.ErrorCode}</td>
           <td class="loc">${loc}</td>
           <td class="loc">char=${v.CharIDRef ?? "?"} para=${v.ParaPrIDRef ?? "?"}</td>
           <td>${table}</td>
-          <td>${escapeHtml(v.errorText || "")}</td>
+          <td>
+            <div class="desc">${desc}</div>
+            ${docText}
+          </td>
           <td class="loc">${flags}</td>
         </tr>`;
     })
@@ -396,7 +409,7 @@ function renderJsonResults(list, opts, ms) {
           <th>Location</th>
           <th>Refs</th>
           <th>Table</th>
-          <th>Message</th>
+          <th>Description</th>
           <th>Flags</th>
         </tr>
       </thead>
