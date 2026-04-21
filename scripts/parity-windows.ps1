@@ -69,6 +69,8 @@ function Ensure-Tool {
 }
 
 function Ensure-Vcpkg {
+    [OutputType([string])]
+    param()
     $root = $env:VCPKG_ROOT
     if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
     if (-not $root -or -not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
@@ -76,9 +78,13 @@ function Ensure-Vcpkg {
         if (-not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
             Write-Host "Bootstrapping vcpkg into $root..."
             if (-not (Test-Path $root)) {
-                git clone https://github.com/microsoft/vcpkg $root
+                # Pipe to Out-Host so progress stays user-visible but doesn't
+                # accumulate into the function's output pipeline (which
+                # would otherwise make the return value an array of
+                # every line git/bootstrap printed, breaking the caller).
+                git clone https://github.com/microsoft/vcpkg $root | Out-Host
             }
-            & (Join-Path $root 'bootstrap-vcpkg.bat')
+            & (Join-Path $root 'bootstrap-vcpkg.bat') | Out-Host
         }
     }
     return $root
