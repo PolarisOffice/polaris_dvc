@@ -67,11 +67,41 @@ cargo test  --workspace
 
 ### CLI
 
+기본 사용:
+
 ```sh
-cargo run -p polaris-rhwpdvc-cli -- -j -t schemas/jsonFullSpec.json path/to/document.hwpx
+# 가장 흔한 호출 — spec JSON + HWPX 문서를 받아 JSON 으로 검증 결과 출력
+cargo run -p polaris-rhwpdvc-cli -- \
+    -t schemas/jsonFullSpec.json path/to/document.hwpx
+
+# 파일로 저장 + 첫 오류에서 중단 + DVC.exe 바이트 동일성 모드
+cargo run -p polaris-rhwpdvc-cli -- \
+    -j --file=out.json -s --dvc-strict \
+    -t schemas/jsonFullSpec.json path/to/document.hwpx
+
+# HWPX 를 stdin 으로 받기 (파이프라인)
+cat doc.hwpx | cargo run -p polaris-rhwpdvc-cli -- \
+    -j -t schemas/jsonFullSpec.json -
 ```
 
-플래그는 업스트림 DVC 와 동일하다 (`-j`, `-x`, `--file=`, `-s`, `-a`, `-t <spec>`).
+**업스트림 DVC 와의 플래그 매핑**: 단순히 "동일" 은 아니고, 실제 호환 정도와 의도적 차이가
+있다. 업스트림 `CommandParser.cpp` 기준:
+
+| polaris | 업스트림 | 동작 |
+|---|---|---|
+| `-j`, `-x` | `-j`, `-x` | 출력 형식. 단 `-x` 는 업스트림이 NotYet 리턴, polaris 는 Extended 프로파일에서 실제 XML 출력 |
+| `--file=PATH` | `--file=PATH` | 파일로 저장 |
+| `-s`, `-a` | `-s`, `-a` | 첫 오류 중단 / 전체 검사 (기본) |
+| **`-t SPEC`** | 다름 | polaris 는 **스펙 파일 경로**. 업스트림 `-t` 는 `OutputOption::Table` 토글 (조건부 필드 축소). 의도적 divergence — 자세한 이유는 `docs/cli-compat.md` |
+| `--output-option=<set>` | `-d`/`-o`/`-t`/`-i`/`-p`/`-y`/`-k` | 업스트림의 7 개 단일-문자 토글을 하나의 long flag 로 통합 |
+| `--dvc-strict` | 없음 | polaris 전용. 업스트림이 실제 구현한 JID 만 출력 |
+
+업스트림은 스펙·HWPX 를 positional args 로만 받는다 (플래그 자리와 무관). 업스트림 README 가
+Demo 예제로 싣는 `ExampleWindows.exe -j --file=... -s -t test.json "005_busan.hwpx"` 의 `-t` 는
+**스펙 지정이 아니라** `OutputOption::Table` 토글이고, `test.json` / `005_busan.hwpx` 는 그냥
+positional 이다.
+
+전체 플래그 표, exit code 정책, 예제 대응표는 [`docs/cli-compat.md`](docs/cli-compat.md) 참고.
 
 ### WASM
 
@@ -86,10 +116,13 @@ wasm-pack build crates/polaris-rhwpdvc-wasm --target nodejs
 
 ## 문서
 
+- [docs/cli-compat.md](docs/cli-compat.md) — 업스트림 CLI 플래그 표면과의 대응·차이, exit code 정책
 - [docs/golden-tests.md](docs/golden-tests.md) — DVC parity 회귀 테스트 운영 방법
 - [docs/jid-registry.md](docs/jid-registry.md) — JID 전체 레지스트리 재생성 및 엔진 확장 가이드
 - [docs/dvc-parity-status.md](docs/dvc-parity-status.md) — CI에서 업스트림 DVC 빌드 시도 기록
+- [docs/dvc-parity-handoff.md](docs/dvc-parity-handoff.md) — DVC.exe 바이트 parity 달성 시도·실패 이력·다음 단계
 - [docs/windows-parity-howto.md](docs/windows-parity-howto.md) — Windows PC 에서 DVC.exe 실행해 `expected.json` 생성·검증하는 절차
+- [docs/utm-windows-setup.md](docs/utm-windows-setup.md) — Apple Silicon Mac 에서 UTM + Windows 11 ARM VM 으로 Windows parity 환경 구축
 - [docs/parity-roadmap.md](docs/parity-roadmap.md) — 기능 parity 우선순위와 남은 작업
 
 ## 라이선스
