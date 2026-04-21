@@ -385,8 +385,15 @@ gone into the CI build.
   `doValidationCheck`.
 - `testdata/real-samples/` — three real Hancom Docs HWPX files
   (empty, with-text, complex 3.1 MB press release).
-- `schemas/jsonFullSpec.json` — the canonical 22-key upstream spec
-  that triggers the crash.
+- `schemas/jsonFullSpec.json` — the canonical upstream **JSON
+  Schema reference** (not a runnable spec — it describes every
+  possible rule field using JSON-Schema-style type/enum metadata).
+  The cross-matrix probes that passed this to `-t` were feeding
+  the schema document as if it were a spec; upstream's loose
+  jsoncpp parser accepts the file syntactically and triggers the
+  downstream crash the same way any non-trivial spec does. Actual
+  runnable example specs live at `third_party/dvc-upstream/sample/
+  test.json` and in every `testdata/golden/<case>/spec.json`.
 
 ## 10. Build-history summary (abbreviated)
 

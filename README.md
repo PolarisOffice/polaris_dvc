@@ -67,22 +67,37 @@ cargo test  --workspace
 
 ### CLI
 
+**스펙 파일 ≠ 스키마 파일**. 업스트림 `sample/jsonFullSpec.json` (우리 리포에는
+`schemas/jsonFullSpec.json` 으로 복제) 은 **모든 가능한 필드를 나열한 JSON Schema
+레퍼런스** — `"fontsize": { "type": "number" }` 같은 메타 기술. 실제 validation 에 쓰려면
+거기서 원하는 필드만 뽑아 구체적 값으로 채운 spec 파일을 따로 만들어야 한다. 업스트림
+README 의 Demo 도 이런 실제 spec 파일 (`sample/test.json`) 을 넘겨 사용한다.
+
 기본 사용:
 
 ```sh
-# 가장 흔한 호출 — spec JSON + HWPX 문서를 받아 JSON 으로 검증 결과 출력
+# 실제 spec 파일 하나 (업스트림 sample/test.json 복제본) 로 검증
 cargo run -p polaris-rhwpdvc-cli -- \
-    -t schemas/jsonFullSpec.json path/to/document.hwpx
+    -t third_party/dvc-upstream/sample/test.json path/to/document.hwpx
+
+# 또는 우리 golden fixture 중 하나 (간단한 예)
+cargo run -p polaris-rhwpdvc-cli -- \
+    -t testdata/golden/01_clean/spec.json testdata/golden/01_clean/doc.hwpx
 
 # 파일로 저장 + 첫 오류에서 중단 + DVC.exe 바이트 동일성 모드
 cargo run -p polaris-rhwpdvc-cli -- \
     -j --file=out.json -s --dvc-strict \
-    -t schemas/jsonFullSpec.json path/to/document.hwpx
+    -t my-spec.json path/to/document.hwpx
 
 # HWPX 를 stdin 으로 받기 (파이프라인)
 cat doc.hwpx | cargo run -p polaris-rhwpdvc-cli -- \
-    -j -t schemas/jsonFullSpec.json -
+    -j -t my-spec.json -
 ```
+
+스키마 파일 (`schemas/jsonFullSpec.json`) 을 `-t` 에 넘기는 것은 구조적으로 가능하지만
+의미상 맞지 않는다 — 거기 적힌 `"type": "number"` 같은 메타 필드를 검증 규칙으로 해석하려
+들면 업스트림은 crash 또는 의도와 다른 동작, polaris 는 파싱 단계에서 유사한 field 불일치를
+일으킨다.
 
 **업스트림 DVC 와의 플래그 매핑**: 단순히 "동일" 은 아니고, 실제 호환 정도와 의도적 차이가
 있다. 업스트림 `CommandParser.cpp` 기준:

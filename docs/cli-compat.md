@@ -58,40 +58,63 @@ ExampleWindows.exe -j --file=Result.json -s -t test.json "005_busan.hwpx"
 | `--dvc-strict` | 없음 | polaris 전용 — 업스트림이 실제 구현한 JID 만 출력 (Extended 프로파일에서는 업스트림이 no-op 처리한 JID 도 검사한다) |
 | `-` (positional) | `-` | 동일 — stdin 에서 HWPX 바이트 읽기 |
 
+## 스펙 파일 vs 스키마 파일 — 혼동 주의
+
+업스트림의 `sample/jsonFullSpec.json` (우리는 `schemas/jsonFullSpec.json` 으로 vendored) 은
+**JSON Schema 스타일의 참조 문서** — `"fontsize": { "type": "number" }` 처럼 각 필드의
+허용 타입·범위·enum 을 메타-기술. `[Json schema]` prelude 로 시작한다.
+
+**실제 validation 실행에는 이 파일을 그대로 쓸 수 없다.** 거기에서 원하는 필드만 뽑아
+구체적 값으로 채운 스펙 파일을 따로 만들어야 한다. 업스트림 README Demo 가 쓰는
+`sample/test.json` 은 그런 실제 스펙의 예시 (5 KB, 구체적 값들).
+
+우리 리포 안의 실제 스펙 예시:
+- `third_party/dvc-upstream/sample/test.json` — 업스트림 공식 예제 (vendored)
+- `testdata/golden/01_clean/spec.json` — 가장 단순한 우리 fixture (4 줄)
+- `testdata/golden/<case>/spec.json` — 목적별 45 개 fixture
+
 ## 기본 실행 예제
 
 ### polaris
 
 ```sh
 # 기본: JSON 출력, 모든 조건부 필드 포함, stdout 으로
-cargo run -p polaris-rhwpdvc-cli -- -t schemas/jsonFullSpec.json path/to/document.hwpx
+cargo run -p polaris-rhwpdvc-cli -- \
+    -t third_party/dvc-upstream/sample/test.json path/to/document.hwpx
 
 # 파일로 저장 + 첫 오류에서 중단
 cargo run -p polaris-rhwpdvc-cli -- \
     -j --file=out.json -s \
-    -t schemas/jsonFullSpec.json path/to/document.hwpx
+    -t my-spec.json path/to/document.hwpx
 
 # DVC-strict: 업스트림과 바이트 동일성 목표
 cargo run -p polaris-rhwpdvc-cli -- \
     -j --file=out.json --dvc-strict \
-    -t schemas/jsonFullSpec.json path/to/document.hwpx
+    -t my-spec.json path/to/document.hwpx
 
 # stdin 에서 HWPX 읽기 (파이프라인 친화)
 cat doc.hwpx | cargo run -p polaris-rhwpdvc-cli -- \
-    -j -t schemas/jsonFullSpec.json -
+    -j -t my-spec.json -
 ```
 
 ### 업스트림 DVC
 
-```sh
-# polaris 의 `-t schemas/jsonFullSpec.json doc.hwpx` 와 동치
-ExampleWindows.exe -j -t schemas/jsonFullSpec.json doc.hwpx
-# 실제로는 `-t` 가 OutputOption::Table 을 켠다는 차이가 있음. 동등한
-# polaris 호출은:
-cargo run -p polaris-rhwpdvc-cli -- \
-    -j --output-option=table \
-    -t schemas/jsonFullSpec.json doc.hwpx
+업스트림 README 의 Demo 명령:
+
 ```
+ExampleWindows.exe -j --file=Result.json -s -t test.json "005_busan.hwpx"
+```
+
+여기서 `test.json` 은 **스펙 파일** (positional arg), `-t` 는 `OutputOption::Table` 토글.
+polaris 에서 같은 의도를 쓰려면:
+
+```sh
+cargo run -p polaris-rhwpdvc-cli -- \
+    -j --file=Result.json -s --output-option=table \
+    -t test.json path/to/document.hwpx
+```
+
+(polaris 의 `-t` 는 여기서 "스펙 파일을 test.json 으로 지정" 을 의미한다.)
 
 ## Exit code 정책 (polaris)
 
