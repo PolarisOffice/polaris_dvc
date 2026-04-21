@@ -1,17 +1,50 @@
 # DVC Parity Investigation — Handoff
 
-**Status as of 2026-04-20**: unresolved. Upstream `DVC.exe` crashes
-with access violation (exit code `-1073741819` / `0xC0000005`) for
-every non-trivial rule spec on our CI. Root cause narrowed but not
-identified. A new local workflow revision now builds an instrumented
-`DvcProbeHarness.exe` and enables crash-dump upload. Run #34 proved the
-crash happens inside `doValidationCheck()` for a non-empty spec, after
-`createDVC()` and `setCommand()` succeed. Run #35 captured the stack:
-`OWPMLReaderModule::OWPMLReader::FindPageInfo` →
-`Checker::Initialize` → `DVCModule::doValidationCheck`. A minidump was
-uploaded as artifact `dvc-crashdumps-24655412858`. This document lets a
-fresh agent (AI or human) pick up without reading the full conversation
-history.
+**Status as of 2026-04-21 (final)**: blocked on upstream OWPML library
+incompleteness. Reproduced in a local UTM + Windows 11 ARM VM with
+full build + minidump + cdb stack inspection. Crash stack (definitive
+via `.ecxr` on the crash thread):
+
+```
+DVCModel!OWPMLReaderModule::OWPMLReader::FindPageInfo+0xb6     ← ACTUAL crash
+DVCModel!Checker::Initialize
+DVCModel!DVCModule::doValidationCheck
+```
+
+Cdb locals at the crash frame show `pSegArray = 0x00000000` and a
+preceding stdout message `"Unimplemented error for refID"`. The
+upstream `hwpx-owpml-model` library silently logs an unsupported refID
+and leaves a NULL pSegArray, which FindPageInfo then iterates blindly
+and dereferences. The `!analyze -v` automatic analyzer initially
+mis-attributed the crash to `Checker::CheckCharShapeToCheckList+0x6e`
+(a shallower frame) — that lead to a wrong hypothesis that our rule
+JSON format mismatched. Once we switched to `.ecxr; k` on the crash
+thread, the real frame surfaced.
+
+Verification that the issue is HWPX-side, not spec-side:
+
+- Every real-world Hancom Docs-produced HWPX we tested crashes
+  identically (empty / text / 3 MB press release).
+- `upstream sample/test.json` (the README's "demo" spec, which
+  upstream's devs claim works) also crashes when paired with our
+  Hancom Docs HWPX files.
+- The one spec + HWPX combo that does NOT crash is `{}` spec + any
+  HWPX (early return in `CheckList::parsing`, never reaches
+  FindPageInfo).
+
+So both our and upstream's spec inputs are fine. The HWPX files are
+structurally valid per the OWPML standard, but contain a refID the
+shipped `hwpx-owpml-model` doesn't implement. Upstream likely only
+tested against HWPX files produced by Hangul Office desktop, not
+the Hancom Docs Cloud / mobile-editor format.
+
+## Remaining path to parity (untested)
+
+Obtain an HWPX file produced by Hangul Office **desktop** (not
+Hancom Docs). If that works, our fixtures just need regeneration
+using desktop Hangul Office. A 30-day free trial is available from
+Hancom. Left as TODO — see §8 Option D for the pragmatic
+alternative.
 
 ## 1. What we're trying to do
 

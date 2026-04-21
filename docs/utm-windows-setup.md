@@ -33,7 +33,9 @@ brew install --cask crystalfetch # Windows 11 ARM ISO 자동 다운로더
 **CrystalFetch 사용 (추천)**:
 
 1. CrystalFetch 실행
-2. Language/Edition 기본값 (English / Windows 11 Pro) 또는 원하는 설정
+2. Language: English 또는 Korean, **Edition 은 Home/Pro 아무거나 OK**
+   (우리 워크플로에 Pro 전용 기능 없음 — Hyper-V, BitLocker, GPO 등
+   전부 사용 안 함. Home 이 설치 크기도 살짝 작음)
 3. "Download" → ~5 GB, 속도에 따라 5~20 분
 4. 다운 완료하면 `~/Downloads/Windows11_InsiderPreview_Client_ARM64_ko-kr_Vxxx.iso`
    같은 파일 생성
