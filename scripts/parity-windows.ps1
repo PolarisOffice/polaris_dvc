@@ -283,7 +283,19 @@ Write-Host "Windows SDK:    $sdk"
 Write-Host "vcpkg:          $vcpkgRoot"
 
 # Install jsoncpp (idempotent — vcpkg no-ops when already present).
-& (Join-Path $vcpkgRoot 'vcpkg.exe') install jsoncpp:x86-windows --recurse
+#
+# On Windows ARM64 hosts, vcpkg's default host triplet is
+# arm64-windows, which requires an arm64-native MSVC toolchain.
+# Standard "Desktop development with C++" workloads don't include
+# that; they ship amd64-native + amd64_x86 / amd64_arm64 cross
+# compilers. Force the host triplet to x64-windows so vcpkg's
+# internal helper ports (vcpkg-cmake-config, etc.) build with the
+# always-available amd64 toolchain, which ARM64 Windows runs via
+# the x86-64 emulation layer. The target triplet stays x86-windows
+# to match DVCModel's Release|Win32 linkage.
+$hostTriplet = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'x64-windows' } else { 'x64-windows' }
+& (Join-Path $vcpkgRoot 'vcpkg.exe') install jsoncpp:x86-windows `
+    --host-triplet=$hostTriplet --recurse
 if ($LASTEXITCODE -ne 0) { throw "vcpkg install jsoncpp failed" }
 $jsoncppPkg = Join-Path $vcpkgRoot 'packages\jsoncpp_x86-windows'
 $jsoncppInclude = Join-Path $jsoncppPkg 'include'
