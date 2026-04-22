@@ -18,7 +18,8 @@ pub struct HwpxDocument {
 
 /// ZIP-container and manifest-level observations the parser collects
 /// on the way through `open_bytes`. Populated once per document.
-/// Consumed by `engine::check_integrity` (JID 11010+ / 11020+).
+/// Consumed by `engine::check_integrity` (JID 11010+ / 11020+) and
+/// `engine::check_container` (JID 12000+).
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct StructuralFacts {
     /// True when `mimetype` is the literal first entry in the ZIP
@@ -34,6 +35,24 @@ pub struct StructuralFacts {
     /// `(opf:item@id, opf:item@href)`. Populated from
     /// `Contents/content.hpf`.
     pub manifest_bindata_items: Vec<(String, String)>,
+
+    // ── Phase 2 Container (JID 12000+) fields ────────────────────────
+    /// Every ZIP entry path present in the archive, in central-directory
+    /// order. Used for required-entry / forbidden-entry checks.
+    pub zip_all_paths: Vec<String>,
+    /// Entry paths that contain a `..` path-traversal segment or start
+    /// with `/` (zip-slip class). If non-empty, the archive MUST NOT be
+    /// extracted to disk; emits JID 12010.
+    pub zip_path_traversal: Vec<String>,
+    /// Entry paths we consider cruft — macOS `__MACOSX/`, `.DS_Store`,
+    /// Windows `Thumbs.db`, editor backups (`*~`, `*.swp`). Emits JID
+    /// 12020 (forbidden / spurious entry). Soft — renderer still works,
+    /// but the document isn't "clean".
+    pub zip_cruft_entries: Vec<String>,
+    /// Duplicate entry names within the central directory. Most ZIP
+    /// implementations return the last duplicate, some return the first;
+    /// both are spec violations. Emits JID 12030.
+    pub zip_duplicate_entries: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

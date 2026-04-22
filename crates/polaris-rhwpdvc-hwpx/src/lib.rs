@@ -53,14 +53,43 @@ pub fn open_bytes(input: &[u8]) -> Result<HwpxDocument, HwpxError> {
         let mut s = String::new();
         let _ = mime_entry.read_to_string(&mut s);
         drop(mime_entry);
-        // Collect the ZIP entry list for BinData cross-reference. One
-        // pass through by_index covers the whole archive.
+        // Collect the ZIP entry list for BinData cross-reference + the
+        // Phase 2 Container checks. One pass through by_index covers
+        // the whole archive: record every path (for required-entry /
+        // duplicate / cruft inspection), plus BinData paths separately
+        // (they feed JID 11020-11022).
+        use std::collections::HashSet;
+        let mut seen: HashSet<String> = HashSet::new();
         for i in 0..zip.len() {
-            if let Ok(entry) = zip.by_index(i) {
-                let name = entry.name();
-                if name.starts_with("BinData/") {
-                    structural.zip_bindata_paths.push(name.to_string());
-                }
+            let Ok(entry) = zip.by_index(i) else { continue };
+            let name = entry.name().to_string();
+            structural.zip_all_paths.push(name.clone());
+            if !seen.insert(name.clone()) {
+                structural.zip_duplicate_entries.push(name.clone());
+            }
+            // Path-traversal / zip-slip defenses: reject any `..`
+            // segment and any absolute path. Covers both `../escape`
+            // and `foo/../escape` patterns.
+            if name.starts_with('/')
+                || name.split('/').any(|seg| seg == "..")
+                || name.contains("\\..")
+            {
+                structural.zip_path_traversal.push(name.clone());
+            }
+            // Cruft / meta-files from common editors. Conservative
+            // list — false positives here become noisy warnings.
+            let is_cruft = name.starts_with("__MACOSX/")
+                || name.ends_with("/.DS_Store")
+                || name == ".DS_Store"
+                || name.ends_with("/Thumbs.db")
+                || name == "Thumbs.db"
+                || name.ends_with(".swp")
+                || name.ends_with('~');
+            if is_cruft {
+                structural.zip_cruft_entries.push(name.clone());
+            }
+            if name.starts_with("BinData/") {
+                structural.zip_bindata_paths.push(name);
             }
         }
     }
@@ -146,6 +175,18 @@ mod tests {
 
             zip.start_file("mimetype", opts).unwrap();
             zip.write_all(b"application/hwp+zip").unwrap();
+
+            // OCF container.xml — required by Phase 2 Container check.
+            zip.start_file("META-INF/container.xml", opts).unwrap();
+            zip.write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <ocf:rootfiles>
+    <ocf:rootfile full-path="Contents/content.hpf" media-type="application/hwpml-package+xml"/>
+  </ocf:rootfiles>
+</ocf:container>"#,
+            )
+            .unwrap();
 
             zip.start_file("Contents/content.hpf", opts).unwrap();
             zip.write_all(

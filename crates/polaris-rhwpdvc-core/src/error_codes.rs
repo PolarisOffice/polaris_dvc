@@ -40,6 +40,8 @@ impl ErrorCode {
             6000..=6999 => Category::Reference,
             7000..=10999 => Category::Extended,
             11000..=11999 => Category::Integrity,
+            12000..=12999 => Category::Container,
+            13000..=13999 => Category::Schema,
             _ => Category::Unknown,
         }
     }
@@ -145,6 +147,11 @@ impl ErrorCode {
         const INTEGRITY_FONT_REF: u32 = jid::INTEGRITY_ORPHAN_FONT_REF.value();
         const INTEGRITY_PARA_BF: u32 = jid::INTEGRITY_ORPHAN_BORDER_FILL_IDREF.value();
         const INTEGRITY_CHAR_BF: u32 = jid::INTEGRITY_ORPHAN_CHAR_BORDER_FILL_IDREF.value();
+        const CONTAINER_REQUIRED: u32 = jid::CONTAINER_REQUIRED_ENTRY_MISSING.value();
+        const CONTAINER_MANIFEST: u32 = jid::CONTAINER_MANIFEST_ENTRY_MISSING.value();
+        const CONTAINER_TRAVERSAL: u32 = jid::CONTAINER_PATH_TRAVERSAL.value();
+        const CONTAINER_CRUFT: u32 = jid::CONTAINER_CRUFT_ENTRY.value();
+        const CONTAINER_DUPLICATE: u32 = jid::CONTAINER_DUPLICATE_ENTRY.value();
 
         match self.0 {
             FONTSIZE => "Font size does not match specification",
@@ -237,6 +244,12 @@ impl ErrorCode {
             INTEGRITY_FONT_REF => "fontRef references an unknown faceName id",
             INTEGRITY_PARA_BF => "paraPr borderFillIDRef has no matching borderFill",
             INTEGRITY_CHAR_BF => "charPr borderFillIDRef has no matching borderFill",
+
+            CONTAINER_REQUIRED => "required HWPX ZIP entry is missing",
+            CONTAINER_MANIFEST => "OPF manifest lists an entry the ZIP doesn't contain",
+            CONTAINER_TRAVERSAL => "ZIP entry contains a path-traversal segment",
+            CONTAINER_CRUFT => "ZIP contains editor-generated cruft entry",
+            CONTAINER_DUPLICATE => "duplicate ZIP entry name",
 
             _ => "Rule violation",
         }
@@ -394,6 +407,36 @@ pub mod jid {
     /// `<hh:charPr>` has a `borderFillIDRef="N"` whose `N` doesn't match
     /// any `<hh:borderFill id="N">` in the header.
     pub const INTEGRITY_ORPHAN_CHAR_BORDER_FILL_IDREF: ErrorCode = ErrorCode::new(11042);
+
+    // ─── Container (JID 12000-12999) ──────────────────────────────────
+    // ZIP-level well-formedness. These fire from `check_container` and
+    // look at `StructuralFacts.zip_*` fields populated during parse.
+    // Filtered out under `CheckProfile::DvcStrict`.
+
+    /// A required HWPX ZIP entry is missing. `error_string` carries the
+    /// missing path. Covers the three must-have entries:
+    ///   `mimetype`, `META-INF/container.xml`, `Contents/content.hpf`.
+    pub const CONTAINER_REQUIRED_ENTRY_MISSING: ErrorCode = ErrorCode::new(12001);
+    /// One of the expected but non-strictly-required entries is missing
+    /// (e.g. `Contents/header.xml` when the OPF manifest names it, any
+    /// referenced `section*.xml` that the ZIP lacks). `error_string`
+    /// carries the path.
+    pub const CONTAINER_MANIFEST_ENTRY_MISSING: ErrorCode = ErrorCode::new(12002);
+
+    /// At least one ZIP entry contains a `..` path-traversal segment or
+    /// starts with `/`. Zip-slip class — the archive should not be
+    /// extracted to disk as-is.
+    pub const CONTAINER_PATH_TRAVERSAL: ErrorCode = ErrorCode::new(12010);
+
+    /// Editor-generated cruft present (`.DS_Store`, `Thumbs.db`,
+    /// `__MACOSX/`, `*~`, `*.swp`). Soft warning — doesn't prevent
+    /// rendering but the document isn't clean. One violation per entry.
+    pub const CONTAINER_CRUFT_ENTRY: ErrorCode = ErrorCode::new(12020);
+
+    /// Two ZIP central-directory records share the same name. Both
+    /// PK-ZIP and HWPX specs require unique names; duplicates are
+    /// implementation-defined to resolve.
+    pub const CONTAINER_DUPLICATE_ENTRY: ErrorCode = ErrorCode::new(12030);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -410,6 +453,14 @@ pub enum Category {
     /// consistency, ZIP-container invariants, manifest↔BinData sync).
     /// Not in upstream `JsonModel.h`. 11000-11999.
     Integrity,
+    /// polaris-original: ZIP container well-formedness — required
+    /// entries, duplicate names, path-traversal protection, cruft
+    /// detection. 12000-12999.
+    Container,
+    /// polaris-original: XSD conformance against the KS X 6101 schemas
+    /// (element nesting, required attributes, enumerated values, basic
+    /// type constraints). 13000-13999.
+    Schema,
     Unknown,
 }
 

@@ -27,6 +27,19 @@ fn build_hwpx() -> Vec<u8> {
         zip.start_file("mimetype", opts).unwrap();
         zip.write_all(b"application/hwp+zip").unwrap();
 
+        // META-INF/container.xml — required for Phase 2 Container
+        // (JID 12001) check to pass. Points at Contents/content.hpf.
+        zip.start_file("META-INF/container.xml", opts).unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <ocf:rootfiles>
+    <ocf:rootfile full-path="Contents/content.hpf" media-type="application/hwpml-package+xml"/>
+  </ocf:rootfiles>
+</ocf:container>"#,
+        )
+        .unwrap();
+
         zip.start_file("Contents/content.hpf", opts).unwrap();
         zip.write_all(
             br#"<?xml version="1.0" encoding="UTF-8"?>

@@ -80,8 +80,10 @@ fn dvc_strict_allows(code: ErrorCode) -> bool {
         | 3041..=3048
         // JID_TABLE_CAPTION_* — noop (also not yet emitted by us).
         | 3026..=3030
-        // polaris-original integrity checks — not in upstream.
-        | 11000..=11999
+        // polaris-original categories — not in upstream DVC at all.
+        | 11000..=11999   // Integrity   (cross-ref / manifest / lineseg)
+        | 12000..=12999   // Container   (ZIP well-formedness)
+        | 13000..=13999   // Schema      (KS X 6101 XSD conformance)
     )
 }
 
@@ -128,10 +130,15 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
         before_vert_size: 0,
     };
 
+    // Container well-formedness (polaris-original, JID 12000-12999).
+    // ZIP-level defects are most likely to invalidate everything
+    // downstream; report them first. Strict-mode filters them out.
+    if !check_container(&mut ctx) {
+        return ctx.report;
+    }
+
     // Structural-integrity checks (polaris-original, JID 11000-11999).
-    // Run before anything else so ID-reference / container-shape
-    // problems report up top. Strict-mode callers filter them out
-    // automatically via `dvc_strict_allows`.
+    // Cross-ref / manifest consistency sits between ZIP and content.
     if !check_integrity(&mut ctx) {
         return ctx.report;
     }
@@ -1822,6 +1829,80 @@ fn check_integrity_border_fill_refs(ctx: &mut Ctx) -> bool {
             return false;
         }
     }
+    true
+}
+
+/// Phase 2 — ZIP container well-formedness. Runs before the Integrity
+/// pass because a broken container can invalidate everything above it.
+/// Emits JID 12001-12030 (Container category). All JIDs strict-gated.
+///
+/// If `StructuralFacts.zip_all_paths` is empty, the caller constructed
+/// a synthetic `HwpxDocument` without going through `open_bytes` — we
+/// have no ZIP-level observations to check. This path matters for unit
+/// tests that build `HwpxDocument` directly; they're not testing the
+/// container layer.
+fn check_container(ctx: &mut Ctx) -> bool {
+    use std::collections::HashSet;
+    let s = &ctx.doc.structural;
+    if s.zip_all_paths.is_empty() {
+        return true;
+    }
+    let paths: HashSet<&str> = s.zip_all_paths.iter().map(String::as_str).collect();
+
+    // 12001 — required HWPX entries. Three are load-bearing per spec.
+    // Missing `mimetype` is already signalled via JID 11010-11012 (the
+    // integrity pass treats it as a content-level defect); here we only
+    // fire on the two genuinely-required manifest / container entries
+    // whose absence blocks any subsequent XML work.
+    for required in ["META-INF/container.xml", "Contents/content.hpf"] {
+        if !paths.contains(required) {
+            let v = integrity_violation(
+                ctx,
+                jid::CONTAINER_REQUIRED_ENTRY_MISSING,
+                format!("required HWPX ZIP entry missing: {required}"),
+            );
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+
+    // 12010 — path-traversal / zip-slip defenses.
+    for path in &s.zip_path_traversal {
+        let v = integrity_violation(
+            ctx,
+            jid::CONTAINER_PATH_TRAVERSAL,
+            format!("zip entry {path:?} contains path-traversal segment"),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
+    // 12020 — cruft entries. Soft warning, one per entry.
+    for path in &s.zip_cruft_entries {
+        let v = integrity_violation(
+            ctx,
+            jid::CONTAINER_CRUFT_ENTRY,
+            format!("zip contains editor/OS cruft entry: {path}"),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
+    // 12030 — duplicate entries.
+    for path in &s.zip_duplicate_entries {
+        let v = integrity_violation(
+            ctx,
+            jid::CONTAINER_DUPLICATE_ENTRY,
+            format!("zip contains duplicate entry name: {path}"),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+
     true
 }
 
