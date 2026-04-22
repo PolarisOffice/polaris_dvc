@@ -1,6 +1,6 @@
 # polaris_rhwpdvc
 
-한컴 **DVC**(Document Validation Checker)의 멀티플랫폼 포팅. Windows 전용이던 DVC 검증 파이프라인을 Rust로 다시 구현해 **macOS · Windows · Web(WASM)** 어디서든 동일한 규칙 JSON·errorCode·출력 포맷으로 HWPX 문서를 검증하는 것이 목표다.
+**HWPX 종합 검증 툴** — 규칙·구조·스키마·무결성을 한 번에 검사하는 OWPML conformance suite. 한컴 DVC 와 호환되면서 그 위에 KS X 6101 표준 스키마 검증, ZIP/컨테이너 무결성, cross-reference 정합성까지 쌓아 **HWPX 파일의 종합 품질을 판정**한다. **macOS · Windows · Web(WASM)** 전부 지원.
 
 🌐 **브라우저 데모**: <https://miles-hs-lee.github.io/polaris_rhwpdvc/> — HWPX 파일을 드래그&드롭하면 바로 검증 결과를 확인할 수 있다.
 
@@ -17,35 +17,69 @@ HWPX(OWPML) 는 공개된 명세가 있지만, 실제 파일 생태계에서는 
 
 두 모드를 나란히 운영함으로써, 파일이 "명세상 올바른가"와 "현재 DVC 와 호환되는가"를 동시에 파악할 수 있게 한다.
 
-## 1.0 목표
+## 목표 — 검증의 네 축
 
-Compat 모드를 먼저 완성하는 단계다. 기존 DVC 자산(규칙 파일, 연동 툴링)을 그대로 쓰면서 플랫폼 제약만 없애는 것이 핵심이다.
+polaris 는 HWPX 파일을 **여러 각도에서 독립적으로** 검사한다. 각 축은 별도 JID 블록에서
+수집되며, 출력 JSON 에서 카테고리별로 분류된다.
 
-- 한컴 [DVC 업스트림](https://github.com/hancom-io/dvc) 과 동일한 규칙 JSON 스키마 해석
-- `JID 1000~10999` errorCode 블록 전부 호환
-- 출력 JSON 필드·구조 동일 (`CharIDRef`, `ParaPrIDRef`, `PageNo`, `LineNo`, `ErrorCode`, `errorText` …)
-- HWPX(OWPML) 순수 Rust 파서, 외부 libhwp 의존 없음
-- macOS · Windows · `wasm32-unknown-unknown` 타깃 동시 지원
-- 업스트림 CLI 플래그(`-j`, `-x`, `--file=`, `-s`, `-a`, `-t <spec>`) 호환
+1. **규칙 적합성** (Rule conformance) — 사용자가 JSON 으로 정의한 규칙 spec 이
+   허용하는 폰트·크기·스타일 범위 안에 문서가 들어가는지. 한컴 업스트림
+   [DVC](https://github.com/hancom-io/dvc) 와 호환 (JID 1000~7999). `--dvc-strict` 플래그로
+   업스트림이 실제 구현한 JID 만 emit 하는 바이트-호환 모드 운영.
+2. **구조 무결성** (Integrity) — cross-reference 일관성 (`charPrIDRef` ↔ `<charPr>`,
+   `borderFillIDRef` ↔ `<borderFill>` 등), lineseg 배열 일치, ZIP manifest ↔ BinData sync
+   (JID 11000~11999). upstream DVC 에는 없고 polaris 가 추가.
+3. **컨테이너 건전성** (Container) — ZIP 수준의 well-formedness: mimetype 위치·압축 방식,
+   필수 entry 존재, CRC, 금지 extras (`__MACOSX/` 등) (JID 12000~12999).
+4. **스키마 적합성** (Schema) — **KS X 6101** 표준 XSD 대비 각 내부 XML 의 구조·속성·enum
+   적합성 검증 (JID 13000~13999). OWPML 표준을 권위 있는 reference 로 삼는다.
 
-레거시 HWP 5.0 바이너리 포맷은 `polaris-rhwpdvc-format` 에서 감지만 하고 `Hwp5NotImplemented` 를 반환한다. 별도 crate 로 후속 버전에서 붙인다.
+네 축을 모두 지원하되 **외부 의존 없는 순수 Rust 구현**. macOS · Windows · `wasm32-unknown-unknown`
+전부 동일 코드 경로로 빌드된다.
 
-## 2.0 이후 방향
+## 왜 네 축 전부인가
 
-Spec 모드를 장기 축으로 잡는다. OWPML 명세에 대한 **권위 자체는 표준 문서**(TTA 표준·한컴 공개 OWPML 스키마)에 있다. polaris-rhwpdvc 가 지향하는 것은 그 명세를 **실행 가능한 형태로 옮긴 공개 레퍼런스 체커**가 되는 것이다.
+실제 HWPX 생태계는 단일 관점으로 판정할 수 없다:
 
-저장소의 규칙 파일·엔진·golden 테스트 코퍼스는 "polaris-rhwpdvc 가 명세의 어느 부분을 어떻게 검증하는지"를 투명하게 드러내는 역할을 한다. 커버리지 매트릭스와 테스트 결과가 공개돼 있어서, 어떤 3자 구현체든 그 기준에 자신을 비춰 규격 준수 수준을 독립적으로 측정할 수 있다. 궁극적으로는 HWPX 생태계의 **실질적(de facto) 적합성 체커**로 쓰이는 것을 목표로 한다 — 명세 그 자체가 아니라 명세를 검증하는 공개 구현체로서.
+- **규칙만**으로 검사하면 "이 파일에 특정 폰트가 있는가" 만 답하고, 파일 자체가
+  구조적으로 깨졌는지는 모른다 (예: 참조된 ID 가 선언되지 않음)
+- **스키마만**으로 검사하면 XML 은 통과해도 cross-ref 정합성·LLM 이 생성한
+  허술한 ZIP 구조는 놓친다
+- **컨테이너만**으로 검사하면 XML 내용이 명세를 벗어나는지 모른다
+
+polaris 는 네 축 **모두 emit**, 출력 JSON 은 기존 DVC 포맷 유지하면서 카테고리
+필드로 구분. 사용자가 원하는 축만 `--only=container,schema` 식으로 필터링 가능.
+
+## 왜 만드는가
+
+이 프로젝트는 [rHwp](https://github.com/edwardkim/rhwp) 와 그 주변 논의에서 영감을 받았다.
+
+HWPX(OWPML) 는 공개된 명세가 있지만, 실제 파일 생태계에서는 **명세 준수 여부를 판단하는 기준 구현이 없다**. 한컴 뷰어·편집기는 파일을 열 때 명세에서 벗어난 값이 있더라도 자체적으로 보정해 렌더링하기 때문에, 사용자 입장에서는 파일이 정상으로 보인다. 그러나 명세를 신뢰하는 후발 구현체는 그 파일을 그대로 처리했을 때 결과가 달라질 수 있고, 이때 "내 구현이 틀린 것인지, 파일이 명세와 다른 것인지" 판단할 근거가 없다. ([rHwp discussions #188](https://github.com/edwardkim/rhwp/discussions/188) 참고)
+
+한편 [한컴 DVC 업스트림](https://github.com/hancom-io/dvc) 은 Windows 전용 C++ DLL 로
+좁은 rule 적합성 검증만 수행하고, 자기 샘플 HWPX 조차 crash 하는 수준이라 공개 레퍼런스
+로는 불안정하다 (상세는 [`docs/dvc-parity-handoff.md`](docs/dvc-parity-handoff.md)).
+
+polaris-rhwpdvc 는 그 공백을 메워 **KS X 6101 표준 기준의 공개 레퍼런스 체커** 가
+되는 것을 목표로 한다. 규칙·구조·스키마·컨테이너 네 축에서 동시에 검사하여 "이
+HWPX 가 명세를 어디서 어떻게 벗어났는가" 를 투명하게 드러낸다. DVC 호환은 그 안의
+하위 기능 중 하나.
 
 ## 호환 매트릭스
 
-| 항목 | 호환 수준 |
+| 항목 | 상태 |
 |---|---|
-| 규칙 JSON 스키마 | `third_party/dvc-upstream/sample/jsonFullSpec.json` 과 동일 키 체계 |
-| errorCode | JID 1000~10999 블록 동일 (`polaris-rhwpdvc-core` `ErrorCode`) |
-| 출력 JSON | 필드명·구조 동일 |
-| HWPX | Phase 3~ 구현 중 (진행 상황은 `docs/parity-roadmap.md` 참고) |
-| HWP 5.0 바이너리 | 감지만, 파싱은 미구현 |
-| 플랫폼 | Linux · macOS · `wasm32-unknown-unknown` |
+| DVC 규칙 JSON 스키마 (JID 1000-7999) | ✅ 업스트림 키 체계 호환 |
+| DVC errorCode | ✅ 217 개 JID 전부 registry, drift test |
+| DVC 출력 JSON 필드·순서 | ✅ `CharIDRef`, `ParaPrIDRef`, `errorText`, … 동일 |
+| 구조 무결성 (JID 11000-11999) | 🚧 확장 중 — cross-ref / lineseg / BinData sync |
+| 컨테이너 건전성 (JID 12000-12999) | 🚧 Phase 2 |
+| KS X 6101 스키마 적합성 (JID 13000-13999) | 🚧 Phase 3 (`polaris-rhwpdvc-schema` crate) |
+| HWPX(OWPML) 순수 Rust 파서 | ✅ 외부 libhwp 의존 없음 |
+| HWP 5.0 바이너리 | ❌ 감지만, 파싱 미구현 (후속 crate) |
+| 플랫폼 | ✅ Linux · macOS · `wasm32-unknown-unknown` |
+
+상세 범위 설명: [`docs/hwpx-validation-scope.md`](docs/hwpx-validation-scope.md).
 
 ## 워크스페이스
 

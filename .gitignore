@@ -1,5 +1,13 @@
 /target
 /tools/gen-jids/target
+/tools/gen-owpml/target
+
+# Standards / reference materials — copyrighted (KS X 6101 / KATS).
+# Developers fetch them locally; the directory holds only a README.
+# Codegen (`tools/gen-owpml/`) transforms the XSDs into a derivative
+# Rust data structure committed under crates/polaris-rhwpdvc-schema/.
+/standards/*
+!/standards/README.md
 **/*.rs.bk
 Cargo.lock.bak
 .DS_Store
