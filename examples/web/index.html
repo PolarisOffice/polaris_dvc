@@ -47,14 +47,9 @@
         max-width: 1200px;
         margin: 0 auto;
         padding: 24px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        flex-direction: column;
         gap: 24px;
-      }
-      @media (max-width: 900px) {
-        main {
-          grid-template-columns: 1fr;
-        }
       }
       .panel {
         background: var(--panel);
@@ -333,6 +328,18 @@
         color: var(--muted);
         font-size: 14px;
       }
+      /* Two-column split used by the HWPX drop + golden picker row
+         and (with larger min-height) by the explorer. */
+      .split2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 900px) {
+        .split2 {
+          grid-template-columns: 1fr;
+        }
+      }
       /* ── File explorer panel ─────────────────────────────────────── */
       .explorer {
         display: grid;
@@ -464,50 +471,32 @@
     <main>
       <section class="panel">
         <h2>1. HWPX document</h2>
-        <div id="drop">
-          <p><strong>Drop an .hwpx file here</strong></p>
-          <p class="hint">or click to choose</p>
-          <input id="doc-file-input" class="hidden-file" type="file" accept=".hwpx,.zip" />
+        <div class="split2">
+          <div>
+            <div id="drop">
+              <p><strong>Drop an .hwpx file here</strong></p>
+              <p class="hint">or click to choose</p>
+              <input id="doc-file-input" class="hidden-file" type="file" accept=".hwpx,.zip" />
+            </div>
+            <div id="doc-info">No file loaded.</div>
+          </div>
+          <div>
+            <label style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted)">
+              또는 프리셋 (Golden case) 로드
+              <select id="golden-preset">
+                <option value="">— none (use your own) —</option>
+              </select>
+            </label>
+            <p style="font-size:12px; color:var(--muted); margin-top:12px">
+              Golden case 는 테스트 리포에 커밋된 HWPX+spec 쌍이다. 선택하면 문서·규칙·기대 출력까지 자동 로드되므로 "이 입력에 대해 엔진이 뭘 뱉는지"를 바로 볼 수 있다.
+            </p>
+          </div>
         </div>
-        <div id="doc-info">No file loaded.</div>
-      </section>
-      <section class="panel">
-        <h2>2. Rule spec (JSON)</h2>
-        <div class="toolbar">
-          <button data-preset="minimal">Minimal</button>
-          <button data-preset="charshape">CharShape</button>
-          <button data-preset="table">Table</button>
-          <button data-preset="all">All categories</button>
-          <button
-            data-preset="integrity"
-            title="Empty spec — only Integrity (JID 11000-11999) + Container (12000-12999) axes run. Good for 'is this HWPX well-formed?' questions."
-          >Integrity only</button>
-          <button
-            data-preset="container"
-            title="Empty spec — only Container-level (JID 12000) ZIP-shape checks. Fastest screen for whether a file is a valid HWPX container at all."
-          >Container only</button>
-          <button
-            data-preset="schema"
-            title="Empty spec + auto-enable KS X 6101 schema pass. Reports every OWPML XSD divergence (element/attribute/enum). JID 13000-13999."
-          >Schema only</button>
-          <span class="sep"></span>
-          <button id="load-spec-btn" title="Load a spec.json from disk">📂 Load…</button>
-          <button id="save-spec-btn" title="Download the current spec as spec.json">💾 Save</button>
-          <input id="spec-file-input" class="hidden-file" type="file" accept=".json" />
-        </div>
-        <textarea id="spec" spellcheck="false"></textarea>
-        <div id="spec-info"></div>
       </section>
 
-      <section class="panel" style="grid-column: 1 / -1">
-        <h2>3. Options</h2>
+      <section class="panel">
+        <h2>2. Options</h2>
         <div class="options-grid">
-          <label>
-            Golden case
-            <select id="golden-preset">
-              <option value="">— none (use your own) —</option>
-            </select>
-          </label>
           <label>
             Output option
             <select id="output-option">
@@ -538,21 +527,37 @@
             <input id="stop-on-first" type="checkbox" />
             Stop on first violation
           </label>
-          <label class="checkbox" title="Opt in to KS X 6101 XSD schema conformance checks (JID 13000-13999). Off by default because the bootstrap schema model is a subset — it may flag elements it doesn't yet cover as 'unexpected'.">
+          <label class="checkbox" title="Opt in to KS X 6101 XSD schema conformance checks (JID 13000-13999). Off by default because the bundled schema model drifts from real-world HWPX in several known places.">
             <input id="enable-schema" type="checkbox" />
             Enable schema checks (KS X 6101)
           </label>
         </div>
+      </section>
+
+      <section class="panel">
+        <h2>3. Rule spec (JSON)</h2>
+        <div class="toolbar">
+          <button data-preset="minimal" title="Empty spec — rule checks disabled. Integrity (11000) + Container (12000) axes still run because they're always-on in Extended mode.">Minimal</button>
+          <button data-preset="charshape" title="Only CharShape rules (fonts, sizes, bold)">CharShape</button>
+          <button data-preset="table" title="Only Table rules (border, background fill)">Table</button>
+          <button data-preset="all" title="All DVC rule categories at once">All categories</button>
+          <span class="sep"></span>
+          <button id="load-spec-btn" title="Load a spec.json from disk">📂 Load…</button>
+          <button id="save-spec-btn" title="Download the current spec as spec.json">💾 Save</button>
+          <input id="spec-file-input" class="hidden-file" type="file" accept=".json" />
+        </div>
+        <textarea id="spec" spellcheck="false"></textarea>
+        <div id="spec-info"></div>
         <div class="actions">
           <button id="run" class="primary" disabled>Validate</button>
           <span id="status">Loading WASM…</span>
         </div>
       </section>
 
-      <section class="panel" id="explorer-panel" style="grid-column: 1 / -1">
+      <section class="panel" id="explorer-panel">
         <h2>4. File explorer</h2>
         <p style="font-size: 12px; color: var(--muted); margin: 0 0 12px">
-          ZIP 내부 구조. 왼쪽 트리에서 파일을 선택하면 오른쪽에서 열람할 수 있고, 아래 검증 결과에서 위반 항목을 클릭하면 해당 파일의 문제 위치로 이동한다.
+          HWPX ZIP 내부 구조. 왼쪽 트리에서 파일을 선택하면 오른쪽에서 열람할 수 있고, 아래 검증 결과에서 위반 항목을 클릭하면 해당 파일의 문제 위치로 이동한다.
         </p>
         <div class="explorer">
           <div class="tree" id="tree">
@@ -564,7 +569,7 @@
         </div>
       </section>
 
-      <section class="panel" style="grid-column: 1 / -1">
+      <section class="panel">
         <h2>5. Results</h2>
         <div class="toolbar" id="result-toolbar" style="display: none">
           <button id="download-json-btn">⬇ Download JSON</button>

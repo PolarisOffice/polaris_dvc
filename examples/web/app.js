@@ -27,6 +27,12 @@ const GOLDEN_BASE = IS_LOCAL_DEV ? "../../testdata/golden" : "./golden";
 // Quickstart presets — tiny, hand-written specs used outside the
 // golden-case flow. Kept separate from golden presets so users can
 // experiment without loading a full case.
+//
+// "Minimal" is an empty spec: the Integrity (JID 11000) and Container
+// (JID 12000) axes are always-on in Extended mode, so an empty spec
+// still catches orphan refs / bad mimetype / broken BinData sync.
+// To run the Schema axis (13000) use the "Enable schema checks"
+// option in the Options panel — it's a flag, not a preset.
 const PRESETS = {
   minimal: {},
   charshape: {
@@ -60,20 +66,6 @@ const PRESETS = {
     macro: { permission: false },
     specialcharacter: { minimum: 32, maximum: 1048575 },
   },
-  // polaris-original: structural integrity is always-on in Extended
-  // mode, so an empty spec is enough — the check engine still runs
-  // JID 11000-11999 checks against every document. Point of this
-  // preset: signal to the user that "dropping an HWPX here with no
-  // other rules will still catch orphan refs / bad mimetype / broken
-  // BinData sync". Handy for LLM-generated or hand-crafted docs.
-  integrity: {},
-  // Container-only — same empty-spec shape, but the UI layer reads
-  // the preset name and enables/disables the other axis toggles to
-  // match. Exists as a UX hint more than a distinct spec.
-  container: {},
-  // Schema-only — empty spec; the UI flips `enable-schema` on when
-  // this preset is selected so the user sees only JID 13000-13999.
-  schema: {},
 };
 
 // Axis metadata shared by the UI layer. Each JID range maps to one
@@ -155,13 +147,6 @@ function loadPreset(name) {
   $("#spec-info").textContent = `preset: ${name}`;
   activeGolden = null;
   $("#diff-expected-btn").style.display = "none";
-  // Schema axis is opt-in. The `schema` preset auto-enables it
-  // (that's the only way the preset produces findings); any other
-  // preset leaves the toggle alone so the user's explicit choice
-  // is respected.
-  if (name === "schema") {
-    $("#enable-schema").checked = true;
-  }
 }
 
 async function handleSpecFile(file) {
