@@ -152,6 +152,13 @@ impl ErrorCode {
         const CONTAINER_TRAVERSAL: u32 = jid::CONTAINER_PATH_TRAVERSAL.value();
         const CONTAINER_CRUFT: u32 = jid::CONTAINER_CRUFT_ENTRY.value();
         const CONTAINER_DUPLICATE: u32 = jid::CONTAINER_DUPLICATE_ENTRY.value();
+        const SCHEMA_UNEXP_CHILD: u32 = jid::SCHEMA_UNEXPECTED_CHILD.value();
+        const SCHEMA_MISS_CHILD: u32 = jid::SCHEMA_MISSING_REQUIRED_CHILD.value();
+        const SCHEMA_OCCUR: u32 = jid::SCHEMA_TOO_MANY_OCCURRENCES.value();
+        const SCHEMA_MISS_ATTR: u32 = jid::SCHEMA_MISSING_REQUIRED_ATTR.value();
+        const SCHEMA_UNK_ATTR: u32 = jid::SCHEMA_UNKNOWN_ATTR.value();
+        const SCHEMA_TYPE: u32 = jid::SCHEMA_ATTR_TYPE_MISMATCH.value();
+        const SCHEMA_TEXT: u32 = jid::SCHEMA_UNEXPECTED_TEXT.value();
 
         match self.0 {
             FONTSIZE => "Font size does not match specification",
@@ -250,6 +257,14 @@ impl ErrorCode {
             CONTAINER_TRAVERSAL => "ZIP entry contains a path-traversal segment",
             CONTAINER_CRUFT => "ZIP contains editor-generated cruft entry",
             CONTAINER_DUPLICATE => "duplicate ZIP entry name",
+
+            SCHEMA_UNEXP_CHILD => "unexpected child element (KS X 6101 schema)",
+            SCHEMA_MISS_CHILD => "missing required child element (KS X 6101 schema)",
+            SCHEMA_OCCUR => "element count exceeds schema maxOccurs",
+            SCHEMA_MISS_ATTR => "missing required attribute (KS X 6101 schema)",
+            SCHEMA_UNK_ATTR => "unknown attribute on element (KS X 6101 schema)",
+            SCHEMA_TYPE => "attribute value violates its declared simple type",
+            SCHEMA_TEXT => "element contains text where schema disallows it",
 
             _ => "Rule violation",
         }
@@ -437,6 +452,30 @@ pub mod jid {
     /// PK-ZIP and HWPX specs require unique names; duplicates are
     /// implementation-defined to resolve.
     pub const CONTAINER_DUPLICATE_ENTRY: ErrorCode = ErrorCode::new(12030);
+
+    // ─── Schema (JID 13000-13999) ─────────────────────────────────────
+    // KS X 6101 XSD conformance findings. polaris-rhwpdvc-schema crate
+    // produces typed `SchemaViolation` values; the engine maps each
+    // category to a JID below. Strict-gated. One JID per
+    // `model::ViolationCode` variant.
+
+    /// An element appears under a parent where the schema doesn't
+    /// declare it as an allowed child.
+    pub const SCHEMA_UNEXPECTED_CHILD: ErrorCode = ErrorCode::new(13001);
+    /// A required child (minOccurs >= 1) is absent.
+    pub const SCHEMA_MISSING_REQUIRED_CHILD: ErrorCode = ErrorCode::new(13002);
+    /// A child appears more times than its maxOccurs permits.
+    pub const SCHEMA_TOO_MANY_OCCURRENCES: ErrorCode = ErrorCode::new(13003);
+    /// An attribute declared `use="required"` is missing.
+    pub const SCHEMA_MISSING_REQUIRED_ATTR: ErrorCode = ErrorCode::new(13004);
+    /// An attribute name isn't declared on this element.
+    pub const SCHEMA_UNKNOWN_ATTR: ErrorCode = ErrorCode::new(13005);
+    /// An attribute value fails its simple-type constraint (enum,
+    /// integer, boolean, etc.).
+    pub const SCHEMA_ATTR_TYPE_MISMATCH: ErrorCode = ErrorCode::new(13006);
+    /// An element contains character data but its complex type
+    /// disallows mixed content.
+    pub const SCHEMA_UNEXPECTED_TEXT: ErrorCode = ErrorCode::new(13007);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

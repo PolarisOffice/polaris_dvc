@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 polaris-rhwpdvc-hwpx = { workspace = true }
+polaris-rhwpdvc-schema = { workspace = true }
 
 [dev-dependencies]
 zip = { workspace = true }

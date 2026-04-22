@@ -1,0 +1,14 @@
+[package]
+name = "gen-owpml"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Intentionally outside the main workspace — this is a dev/codegen
+# helper that only runs when `standards/` is populated locally. The
+# workspace-level `cargo` commands shouldn't pull it in.
+[workspace]
+
+[dependencies]
+quick-xml = "0.31"
+thiserror = "1"

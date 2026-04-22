@@ -53,6 +53,13 @@ pub enum CheckProfile {
 pub struct EngineOptions {
     pub stop_on_first: bool,
     pub profile: CheckProfile,
+    /// Enable KS X 6101 XSD conformance checks (JID 13000-13999). Off
+    /// by default because the bundled `generated_owpml.rs` is a
+    /// bootstrap subset — on larger documents it produces many
+    /// "unexpected element" / "unknown attribute" findings for elements
+    /// the schema model doesn't cover yet. When `tools/gen-owpml/`
+    /// lands a full schema this default can flip.
+    pub enable_schema: bool,
 }
 
 /// JIDs the `DvcStrict` gate drops so our output stays byte-compatible
@@ -140,6 +147,14 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
     // Structural-integrity checks (polaris-original, JID 11000-11999).
     // Cross-ref / manifest consistency sits between ZIP and content.
     if !check_integrity(&mut ctx) {
+        return ctx.report;
+    }
+
+    // KS X 6101 XSD conformance (polaris-original, JID 13000-13999).
+    // Opt-in via EngineOptions.enable_schema — the bootstrap schema is
+    // a top-20% subset and produces many unexpected-child findings on
+    // elements it doesn't cover yet. Full coverage via tools/gen-owpml.
+    if ctx.opts.enable_schema && !check_schema(&mut ctx) {
         return ctx.report;
     }
 
@@ -1829,6 +1844,78 @@ fn check_integrity_border_fill_refs(ctx: &mut Ctx) -> bool {
             return false;
         }
     }
+    true
+}
+
+/// Phase 3 — OWPML (KS X 6101) XSD conformance. Walks each raw XML
+/// buffer captured by `open_bytes` against the corresponding schema
+/// model in `polaris_rhwpdvc_schema`. Emits JID 13001-13007.
+///
+/// Scope: bootstrap subset of the OWPML schemas (top-20 % of element
+/// names by occurrence frequency). Unknown elements pass through
+/// without a violation — this matches the pragmatic "80 % coverage"
+/// design goal. Schema completeness lands when `tools/gen-owpml/`
+/// replaces the hand-curated `generated_owpml.rs`.
+///
+/// If the caller built `HwpxDocument` directly (no ZIP bytes), all
+/// three raw-XML slices are empty and this pass is a no-op — same
+/// graceful degradation pattern as `check_container`.
+fn check_schema(ctx: &mut Ctx) -> bool {
+    use polaris_rhwpdvc_schema::{validate_xml, OwpmlRoot, ViolationCode};
+
+    let s = &ctx.doc.structural;
+    let passes: [(OwpmlRoot, &[u8], &'static str); 3] = [
+        (OwpmlRoot::ContentHpf, &s.content_hpf_bytes, "content.hpf"),
+        (OwpmlRoot::Head, &s.header_xml_bytes, "header.xml"),
+        // Sections handled in a loop below.
+        (OwpmlRoot::Section, &[], ""),
+    ];
+
+    // Iterate the first two static passes.
+    for (root, bytes, label) in passes.iter().take(2) {
+        if bytes.is_empty() {
+            continue;
+        }
+        let violations = validate_xml(bytes, *root);
+        for v in violations {
+            let code = map_schema_violation(v.code);
+            let msg = format!("[{label}] {}", v.message);
+            let rec = integrity_violation(ctx, code, msg);
+            if !ctx.push(rec) {
+                return false;
+            }
+        }
+    }
+
+    // Section XML passes — one per section in manifest order.
+    for (idx, bytes) in s.section_xml_bytes.iter().enumerate() {
+        if bytes.is_empty() {
+            continue;
+        }
+        let violations = validate_xml(bytes, OwpmlRoot::Section);
+        for v in violations {
+            let code = map_schema_violation(v.code);
+            let msg = format!("[section{idx}] {}", v.message);
+            let rec = integrity_violation(ctx, code, msg);
+            if !ctx.push(rec) {
+                return false;
+            }
+        }
+    }
+
+    // `ViolationCode → ErrorCode` mapping.
+    fn map_schema_violation(c: ViolationCode) -> ErrorCode {
+        match c {
+            ViolationCode::UnexpectedChild => jid::SCHEMA_UNEXPECTED_CHILD,
+            ViolationCode::MissingRequiredChild => jid::SCHEMA_MISSING_REQUIRED_CHILD,
+            ViolationCode::TooManyOccurrences => jid::SCHEMA_TOO_MANY_OCCURRENCES,
+            ViolationCode::MissingRequiredAttribute => jid::SCHEMA_MISSING_REQUIRED_ATTR,
+            ViolationCode::UnknownAttribute => jid::SCHEMA_UNKNOWN_ATTR,
+            ViolationCode::AttributeTypeMismatch => jid::SCHEMA_ATTR_TYPE_MISMATCH,
+            ViolationCode::UnexpectedText => jid::SCHEMA_UNEXPECTED_TEXT,
+        }
+    }
+
     true
 }
 

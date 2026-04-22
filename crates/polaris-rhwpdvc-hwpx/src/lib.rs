@@ -98,6 +98,7 @@ pub fn open_bytes(input: &[u8]) -> Result<HwpxDocument, HwpxError> {
 
     let content_hpf = read_entry_as_string(&mut zip, "Contents/content.hpf")
         .ok_or(HwpxError::Structure("missing Contents/content.hpf"))?;
+    structural.content_hpf_bytes = content_hpf.as_bytes().to_vec();
     let manifest = container::parse_content_hpf(&content_hpf)?;
     structural.manifest_bindata_items = manifest.bindata_items.clone();
 
@@ -107,12 +108,14 @@ pub fn open_bytes(input: &[u8]) -> Result<HwpxDocument, HwpxError> {
         .unwrap_or("Contents/header.xml");
     let header_xml = read_entry_as_string(&mut zip, header_path)
         .ok_or(HwpxError::Structure("missing header.xml"))?;
+    structural.header_xml_bytes = header_xml.as_bytes().to_vec();
     let mut header = header::parse_header(&header_xml)?;
     header.has_macro = manifest.has_macro;
 
     let mut sections = Vec::with_capacity(manifest.section_paths.len());
     for path in &manifest.section_paths {
         if let Some(xml) = read_entry_as_string(&mut zip, path) {
+            structural.section_xml_bytes.push(xml.as_bytes().to_vec());
             sections.push(section::parse_section(&xml)?);
         }
     }

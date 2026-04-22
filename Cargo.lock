@@ -261,6 +261,7 @@ name = "polaris-rhwpdvc-core"
 version = "0.1.0"
 dependencies = [
  "polaris-rhwpdvc-hwpx",
+ "polaris-rhwpdvc-schema",
  "serde",
  "serde_json",
  "thiserror",
@@ -283,6 +284,14 @@ dependencies = [
  "serde",
  "thiserror",
  "zip",
+]
+
+[[package]]
+name = "polaris-rhwpdvc-schema"
+version = "0.1.0"
+dependencies = [
+ "quick-xml",
+ "thiserror",
 ]
 
 [[package]]

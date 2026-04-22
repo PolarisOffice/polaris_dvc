@@ -28,6 +28,10 @@ struct ValidateOpts {
     dvc_strict: bool,
     /// Map to `EngineOptions::stop_on_first`.
     stop_on_first: bool,
+    /// Opt into JID 13000 KS X 6101 schema conformance checks. Default
+    /// off — bootstrap schema subset fires many findings on elements
+    /// it doesn't yet cover.
+    enable_schema: bool,
     /// Which conditional fields are emitted on each violation. Accepts
     /// `"default"` / `"table"` / `"tableDetail"` (or `"table-detail"`) /
     /// `"style"` / `"shape"` / `"hyperlink"` / `"all"`. Missing or
@@ -79,6 +83,7 @@ fn prepare(
         } else {
             CheckProfile::Extended
         },
+        enable_schema: runtime_opts.enable_schema,
     };
 
     let out_opt = parse_output_option(runtime_opts.output_option.as_deref());

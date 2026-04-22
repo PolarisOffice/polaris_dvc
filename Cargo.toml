@@ -4,6 +4,7 @@ members = [
     "crates/polaris-rhwpdvc-core",
     "crates/polaris-rhwpdvc-hwpx",
     "crates/polaris-rhwpdvc-format",
+    "crates/polaris-rhwpdvc-schema",
     "crates/polaris-rhwpdvc-cli",
     "crates/polaris-rhwpdvc-wasm",
 ]
@@ -31,6 +32,7 @@ getrandom = { version = "0.2", features = ["js"] }
 polaris-rhwpdvc-core = { path = "crates/polaris-rhwpdvc-core", version = "0.1.0" }
 polaris-rhwpdvc-hwpx = { path = "crates/polaris-rhwpdvc-hwpx", version = "0.1.0" }
 polaris-rhwpdvc-format = { path = "crates/polaris-rhwpdvc-format", version = "0.1.0" }
+polaris-rhwpdvc-schema = { path = "crates/polaris-rhwpdvc-schema", version = "0.1.0" }
 
 [profile.release]
 lto = "thin"

@@ -93,6 +93,13 @@ struct Cli {
     #[arg(long = "dvc-strict")]
     dvc_strict: bool,
 
+    /// Enable KS X 6101 XSD conformance checks (JID 13000-13999).
+    /// Off by default because the bundled schema model is a bootstrap
+    /// subset — on unfamiliar elements it produces many findings.
+    /// Flip on to audit document structure against the standard.
+    #[arg(long = "enable-schema")]
+    enable_schema: bool,
+
     /// Output option — which conditional fields are emitted per
     /// violation. Mirrors upstream `DVCOutputOption`. Default: `all`.
     #[arg(long = "output-option", value_enum, default_value = "all")]
@@ -160,6 +167,7 @@ fn main() -> ExitCode {
         } else {
             polaris_rhwpdvc_core::engine::CheckProfile::Extended
         },
+        enable_schema: cli.enable_schema,
     };
     let report = polaris_rhwpdvc_core::engine::validate(&doc, &spec, &opts);
 

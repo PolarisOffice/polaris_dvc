@@ -53,6 +53,17 @@ pub struct StructuralFacts {
     /// implementations return the last duplicate, some return the first;
     /// both are spec violations. Emits JID 12030.
     pub zip_duplicate_entries: Vec<String>,
+
+    // ── Phase 3 Schema (JID 13000+) inputs ────────────────────────────
+    /// Raw UTF-8 bytes of `Contents/header.xml`, preserved for the
+    /// schema-validator pass. Empty when the entry is absent.
+    pub header_xml_bytes: Vec<u8>,
+    /// Raw bytes of every `Contents/section*.xml` in manifest order.
+    /// Parallel to `HwpxDocument::sections`.
+    pub section_xml_bytes: Vec<Vec<u8>>,
+    /// Raw bytes of `Contents/content.hpf` (OPF package). Empty if
+    /// absent (caller won't have gotten past open_bytes in that case).
+    pub content_hpf_bytes: Vec<u8>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
