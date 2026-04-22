@@ -91,6 +91,71 @@ absorbs; otherwise `child_max × outer_max`). Nested group
 modifiers (`xs:sequence` / `xs:choice` / `xs:all`) compound their
 own `maxOccurs` on top of the outer.
 
+## Golden fixture findings
+
+The 44 fixtures under `testdata/golden/` are synthetic — built from
+an in-Rust template at `crates/polaris-rhwpdvc-core/tests/support/mod.rs`.
+Those live in the repo and ship to the web demo's preset list, so
+they should be as schema-clean as the standard allows. One cleanup
+pass (commit `4a0*` series) dropped pervasive Hancom-extension
+attributes from the template and added the KS X 6101 required
+children that were missing:
+
+- Dropped from `<hh:borderFill>`: `slash`, `backSlash`,
+  `crookedSlash`, `isCounterSlash`, `isCounterBackSlash` attributes
+  (the standard carries that info in `<hh:slash>` / `<hh:backSlash>`
+  child elements, which the template already emitted).
+- Dropped the non-standard `<hh:layoutCompatibility textWrap=… …/>`
+  attribute form in favour of the empty element the XSD declares.
+- Fixed `compatibleDocument@targetProgram` from `"HWP2018"` →
+  `"HWP201X"` (the XSD enum).
+- Added the required `<hh:trackchangeConfig/>` under `<hh:head>`
+  and `<hh:autoSpacing/>` under `<hh:paraPr>`.
+- Removed Hancom extension attrs from `<hp:secPr>` (`tabStop`),
+  `<hp:subList>` (`padding`, `lang`), and `<hh:bullet>` (`useInstWidth`,
+  `autoIndent`, `widthAdjust`, …); added the required `useImage`
+  attr on bullet.
+- Renamed `<hp:outside>` (not declared anywhere in KS X 6101) to
+  `<hp:outMargin>` (the standard name for the same concept).
+- Fixed `<hp:placement place="DOC_END"/>` → `"END_OF_DOCUMENT"` under
+  endnote scope — the enum values differ from the footnote `<placement>`
+  (which uses `EACH_COLUMN`).
+- Dropped the optional `<hh:forbiddenWordList/>` entirely (it was
+  empty and missing the required `itemCnt` attr).
+
+After cleanup: **57 remaining findings across 43 cases**, down from
+~1 100 originally. The residue falls into three buckets, all
+deliberate:
+
+1. **Hancom-extension attrs the engine needs**
+   - `<hp:linesegarray>` under `<hp:p>` — carries layout cache the
+     engine's page/line tracker reads. Present in every HWPX our
+     template emits (44 cases). Removing it would break page-info
+     rule tests.
+   - `numberShape` attribute on `<hh:paraHead>` — two cases
+     (`17_outlineshape_numtype_mismatch`,
+     `18_paranumbullet_numshape_mismatch`) exercise rules that match
+     on this Hancom attr; the parser reads it by name.
+
+2. **Intentional rule violations inside test cases**
+   - `<hh:fillBrush><hh:winBrush hatchStyle="NONE"…/></hh:fillBrush>`
+     in case 25 — "NONE" isn't in the XSD hatchStyle enum, and that
+     mismatch is itself the rule this case tests.
+   - `numFormat="^1)"` / `numFormat="^2."` in cases 17/18 — same
+     pattern: the format string intentionally diverges from the
+     NumFormat enum to exercise the format rule.
+
+3. **Scope-wrapper structural quirk**
+   - Cases 38/39/40 (shape / footnote / endnote scope) and 09
+     (hyperlink) put `<hp:shapeObject>` / `<hp:footnote>` /
+     `<hp:endnote>` / `<hp:fieldBegin>` / `<hp:fieldEnd>` directly
+     under `<hp:p>`, wrapping a `<hp:run>`. The XSD-correct nesting
+     would be `<hp:run><hp:ctrl>…</hp:ctrl></hp:run>`, but our
+     parser's scope-depth tracker reads these at whichever nesting
+     level they appear. Restructuring the fixture would also require
+     a parser change; for now it's noted as a known test-scaffold
+     shape.
+
 ## What to do when a new finding appears on a real sample
 
 1. Identify the exact element / attribute / enum involved.

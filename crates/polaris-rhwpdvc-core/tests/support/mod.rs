@@ -391,10 +391,15 @@ impl Fixture {
             self.border_fills.len()
         ));
         for bf in &self.border_fills {
+            // BorderFill per KS X 6101: attributes are {id, threeD,
+            // shadow, centerLine, breakCellSeparateLine}; diagonal line
+            // info lives in child <slash> / <backSlash> elements, not
+            // attributes on <borderFill>. The real-world Hancom form
+            // duplicates the info as attrs — we don't, so the Schema
+            // axis stays clean on internal fixtures.
             s.push_str(&format!(
                 "<hh:borderFill id=\"{}\" threeD=\"0\" shadow=\"0\" \
-                 slash=\"NONE\" backSlash=\"NONE\" crookedSlash=\"0\" \
-                 isCounterSlash=\"0\" isCounterBackSlash=\"0\">\
+                 centerLine=\"NONE\" breakCellSeparateLine=\"0\">\
                  <hh:slash type=\"NONE\" Crooked=\"0\" isCounter=\"0\"/>\
                  <hh:backSlash type=\"NONE\" Crooked=\"0\" isCounter=\"0\"/>\
                  <hh:leftBorder type=\"{}\" width=\"{:.2} mm\" color=\"{}\"/>\
@@ -528,6 +533,7 @@ impl Fixture {
                  <hh:lineSpacing type=\"PERCENT\" value=\"{ls}\" unit=\"HWPUNIT\"/>\
                  <hh:border borderFillIDRef=\"1\" offsetLeft=\"0\" offsetRight=\"0\" \
                  offsetTop=\"0\" offsetBottom=\"0\" connect=\"0\" ignoreMargin=\"0\"/>\
+                 <hh:autoSpacing eAsianEng=\"0\" eAsianNum=\"0\"/>\
                  </hh:paraPr>",
                 p.id,
                 p.align,
@@ -557,6 +563,12 @@ impl Fixture {
                 n.id, n.start
             ));
             for h in &n.heads {
+                // `numberShape` is a Hancom extension attribute (not in
+                // KS X 6101) — but our parser reads it to drive the
+                // number-shape rule checks. Keep it in the XML so the
+                // rule tests work; the Schema axis correctly reports
+                // this as a known divergence (2 findings across
+                // 44 goldens, documented in docs/schema-drift-catalog.md).
                 s.push_str(&format!(
                     "<hh:paraHead level=\"{}\" start=\"{}\" numFormat=\"{}\" numberShape=\"{}\" \
                      align=\"LEFT\" useInstWidth=\"1\" autoIndent=\"1\" widthAdjust=\"0\" \
@@ -572,10 +584,13 @@ impl Fixture {
         s.push_str("</hh:numberings>");
         s.push_str(&format!("<hh:bullets itemCnt=\"{}\">", self.bullets.len()));
         for b in &self.bullets {
+            // BulletType attrs per KS X 6101: id (required), char
+            // (required), checkedChar (optional), useImage (required).
+            // Emit only those — the layout attrs (useInstWidth /
+            // autoIndent / widthAdjust / textOffsetType / textOffset /
+            // charPrIDRef) are Hancom extensions.
             s.push_str(&format!(
-                "<hh:bullet id=\"{}\" char=\"{}\" checkedChar=\"\" useInstWidth=\"0\" \
-                 autoIndent=\"0\" widthAdjust=\"0\" textOffsetType=\"PERCENT\" \
-                 textOffset=\"50\" charPrIDRef=\"0\"/>",
+                "<hh:bullet id=\"{}\" char=\"{}\" checkedChar=\"\" useImage=\"0\"/>",
                 b.id,
                 xml_escape(&b.char_)
             ));
@@ -587,16 +602,27 @@ impl Fixture {
              <hh:trackChangeAuthors itemCnt=\"0\"/>",
         );
         s.push_str("</hh:refList>");
-        s.push_str("<hh:forbiddenWordList/>");
+        // forbiddenWordList: optional per KS X 6101, and when present
+        // `itemCnt` is required. Omit entirely to keep the fixture lean.
+        //
+        // compatibleDocument: `targetProgram` enum is {HWP201X, HWP200X,
+        // MS_WORD}. `<layoutCompatibility>` has no attributes in the
+        // standard — its Hancom-extension attribute form (textWrap,
+        // tableCellApply, …) isn't part of KS X 6101, so we skip that
+        // element entirely.
+        // CompatibleDocumentType requires <layoutCompatibility> (min 1).
+        // The standard declares layoutCompatibility with no attributes;
+        // its body is a sequence of 50+ boolean-like flag elements
+        // (applyFontWeightToBold, extendLineheightToOffset, …), all
+        // optional. An empty element satisfies the schema.
         s.push_str(
-            "<hh:compatibleDocument targetProgram=\"HWP2018\">\
-             <hh:layoutCompatibility textWrap=\"0\" tableCellApply=\"0\" \
-             imageFormat=\"0\" hangulEnglishSpacing=\"0\" blockOverlap=\"0\" \
-             legacyLineSpacing=\"0\" legacyAnchorPos=\"0\" \
-             legacyPageBreakInTableCell=\"0\" adjustTabStopsAtParagraphEnd=\"0\" \
-             treatQuotationAsLatin=\"0\"/>\
+            "<hh:compatibleDocument targetProgram=\"HWP201X\">\
+             <hh:layoutCompatibility/>\
              </hh:compatibleDocument>",
         );
+        // trackchangeConfig is a REQUIRED head child (minOccurs=1);
+        // leaving it out trips the Schema axis. Empty form is valid.
+        s.push_str("<hh:trackchangeConfig/>");
         s.push_str(
             "<hh:docOption>\
              <hh:linkinfo path=\"\" pageInherit=\"0\" footnoteInherit=\"0\"/>\
@@ -696,14 +722,13 @@ impl Fixture {
                      flowWithText=\"0\" allowOverlap=\"0\" holdAnchorAndSO=\"0\" \
                      vertRelTo=\"PARA\" horzRelTo=\"COLUMN\" vertAlign=\"TOP\" \
                      horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/>\
-                     <hp:outside left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/>\
+                     <hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/>\
                      <hp:inMargin left=\"141\" right=\"141\" top=\"141\" bottom=\"141\"/>\
                      <hp:tr><hp:tc name=\"\" header=\"0\" hasMargin=\"0\" \
                      protect=\"0\" editable=\"1\" dirty=\"0\" borderFillIDRef=\"{}\">\
                      <hp:subList id=\"\" textDirection=\"HORIZONTAL\" \
                      lineWrap=\"BREAK\" vertAlign=\"TOP\" linkListIDRef=\"0\" \
-                     linkListNextIDRef=\"0\" textWidth=\"0\" padding=\"0\" \
-                     lang=\"KOREAN\"/>\
+                     linkListNextIDRef=\"0\" textWidth=\"0\" textHeight=\"0\"/>\
                      <hp:cellAddr colAddr=\"0\" rowAddr=\"0\"/>\
                      <hp:cellSpan colSpan=\"1\" rowSpan=\"1\"/>\
                      <hp:cellSz width=\"42520\" height=\"2000\"/>\
@@ -837,8 +862,13 @@ const CONTENT_HPF_SUFFIX: &str = concat!(
 );
 
 const SEC_PR: &str = concat!(
+    // SectionDefinitionType attrs per KS X 6101:
+    //   {id, textDirection, spaceColumns, tabStopVal, tabStopUnit,
+    //    outlineShapeIDRef, memoShapeIDRef, textVerticalWidthHead,
+    //    masterPageCnt}. Hancom's `tabStop="..."` isn't one of them
+    //    (the standard keeps tab-stop info in `tabStopVal`/`tabStopUnit`).
     "<hp:secPr id=\"\" textDirection=\"HORIZONTAL\" spaceColumns=\"1134\" ",
-    "tabStop=\"8000\" tabStopVal=\"4000\" tabStopUnit=\"HWPUNIT\" ",
+    "tabStopVal=\"4000\" tabStopUnit=\"HWPUNIT\" ",
     "outlineShapeIDRef=\"0\" memoShapeIDRef=\"0\" textVerticalWidthHead=\"0\" ",
     "masterPageCnt=\"0\">",
     "<hp:grid lineGrid=\"0\" charGrid=\"0\" wonggojiFormat=\"0\"/>",
@@ -867,7 +897,7 @@ const SEC_PR: &str = concat!(
     "<hp:noteLine length=\"0\" type=\"SOLID\" width=\"0.12 mm\" color=\"#000000\"/>",
     "<hp:noteSpacing betweenNotes=\"0\" belowLine=\"567\" aboveLine=\"850\"/>",
     "<hp:numbering type=\"CONTINUOUS\" newNum=\"1\"/>",
-    "<hp:placement place=\"DOC_END\" beneathText=\"0\"/>",
+    "<hp:placement place=\"END_OF_DOCUMENT\" beneathText=\"0\"/>",
     "</hp:endNotePr>",
     "</hp:secPr>"
 );
