@@ -118,6 +118,8 @@ mod tests {
             use_hyperlink: false,
             is_in_shape: false,
             error_string: String::new(),
+            file_label: String::new(),
+            byte_offset: 0,
         });
         let xml = r.to_xml_string(OutputOption::AllOption);
         assert!(xml.contains("CharIDRef=\"0\""));

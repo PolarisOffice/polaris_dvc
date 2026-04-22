@@ -120,6 +120,48 @@ pub fn describe_error(code: u32) -> String {
     ErrorCode::new(code).text().to_string()
 }
 
+/// Enumerate every ZIP entry in an HWPX file, without running the
+/// validator. Returns an array of `{ path, size, compression,
+/// isDirectory }` objects in the order they appear in the ZIP
+/// central directory — the web demo feeds this into its file-tree
+/// explorer. Works even when the document fails full OWPML parsing,
+/// so "the file is broken, but let me look inside it" still works.
+#[wasm_bindgen(js_name = listZipEntries)]
+pub fn list_zip_entries(hwpx: &[u8]) -> Result<JsValue, JsError> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Entry {
+        path: String,
+        size: u64,
+        compression: &'static str,
+        is_directory: bool,
+    }
+    let entries =
+        polaris_rhwpdvc_hwpx::list_zip_entries(hwpx).map_err(|e| JsError::new(&e.to_string()))?;
+    let mapped: Vec<Entry> = entries
+        .into_iter()
+        .map(|e| Entry {
+            path: e.path,
+            size: e.size,
+            compression: e.compression,
+            is_directory: e.is_directory,
+        })
+        .collect();
+    let ser = serde_wasm_bindgen::Serializer::json_compatible();
+    mapped
+        .serialize(&ser)
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Read one ZIP entry's raw bytes by path. Returns a `Uint8Array`.
+/// The JS caller decides whether to decode as text (UTF-8 for XML /
+/// HPF) or keep as a blob (for binary assets like images). Pairs with
+/// [`list_zip_entries`] to power click-to-view in the demo.
+#[wasm_bindgen(js_name = readZipEntry)]
+pub fn read_zip_entry(hwpx: &[u8], path: &str) -> Result<Vec<u8>, JsError> {
+    polaris_rhwpdvc_hwpx::read_zip_entry(hwpx, path).map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// Same as [`validate`] but returns the XML document string. This is a
 /// polaris extension — upstream DVC never implemented XML output — so
 /// callers using `dvcStrict: true` get an error mirroring the CLI's

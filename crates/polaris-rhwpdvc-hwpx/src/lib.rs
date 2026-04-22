@@ -138,6 +138,62 @@ fn read_entry_as_string<R: std::io::Read + std::io::Seek>(
     Some(s)
 }
 
+/// Metadata for one ZIP entry — used by the web demo's file-tree
+/// explorer. We list every entry exactly as the ZIP central directory
+/// records it; directory synthesis is left to the JS side.
+#[derive(Debug, Clone)]
+pub struct ZipEntryInfo {
+    /// Full path as stored in the ZIP (e.g. `"Contents/section0.xml"`).
+    pub path: String,
+    /// Uncompressed byte length. `0` for zero-byte entries and for
+    /// directory markers.
+    pub size: u64,
+    /// Compression method as a short label (`"stored"`, `"deflated"`,
+    /// `"bzip2"`, `"other"`). Useful for flagging the mimetype-must-be-
+    /// stored invariant at a glance.
+    pub compression: &'static str,
+    /// Whether the entry's path ends in `/` (ZIP convention for an
+    /// empty directory marker).
+    pub is_directory: bool,
+}
+
+/// Enumerate every entry in an HWPX ZIP. Returns entries in central-
+/// directory order so the web demo's tree matches the file's physical
+/// layout. Does **not** parse OWPML — so this still works when the
+/// document would otherwise fail `open_bytes` (e.g. missing header.xml),
+/// which matters for inspecting broken files.
+pub fn list_zip_entries(input: &[u8]) -> Result<Vec<ZipEntryInfo>, HwpxError> {
+    let mut zip = zip::ZipArchive::new(Cursor::new(input))?;
+    let mut out = Vec::with_capacity(zip.len());
+    for i in 0..zip.len() {
+        let Ok(entry) = zip.by_index(i) else { continue };
+        let name = entry.name().to_string();
+        let is_directory = name.ends_with('/') || entry.is_dir();
+        let compression = match entry.compression() {
+            zip::CompressionMethod::Stored => "stored",
+            zip::CompressionMethod::Deflated => "deflated",
+            _ => "other",
+        };
+        out.push(ZipEntryInfo {
+            path: name,
+            size: entry.size(),
+            compression,
+            is_directory,
+        });
+    }
+    Ok(out)
+}
+
+/// Read one ZIP entry's raw bytes by path. Paired with
+/// [`list_zip_entries`] for the web demo's click-to-view flow.
+pub fn read_zip_entry(input: &[u8], path: &str) -> Result<Vec<u8>, HwpxError> {
+    let mut zip = zip::ZipArchive::new(Cursor::new(input))?;
+    let mut entry = zip.by_name(path)?;
+    let mut buf = Vec::with_capacity(entry.size() as usize);
+    entry.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

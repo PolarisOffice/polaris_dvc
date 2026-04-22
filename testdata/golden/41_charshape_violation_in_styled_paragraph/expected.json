@@ -13,7 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "paragraph 0 references styleIDRef=5 with no matching <hh:style>"
   },
   {
     "CharIDRef": 0,

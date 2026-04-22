@@ -102,15 +102,28 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                         .iter()
                         .any(|(name, _, _)| name.as_bytes() == local);
                     if !allowed {
+                        let child_name = String::from_utf8_lossy(local).into_owned();
+                        // Build the "only these are allowed" hint. We cap
+                        // at the first 8 names so a single "run" element
+                        // (which has 40+ allowed children) doesn't produce
+                        // an unreadable message; remainder is counted.
+                        let allowed_list = format_allowed_children(parent.decl.children);
+                        let message = if parent.decl.children.is_empty() {
+                            format!(
+                                "<{parent}> cannot contain any child elements, but found <{child_name}>",
+                                parent = parent.decl.name,
+                            )
+                        } else {
+                            format!(
+                                "<{parent}> can only contain {allowed_list}, but found <{child_name}>",
+                                parent = parent.decl.name,
+                            )
+                        };
                         violations.push(SchemaViolation {
                             code: ViolationCode::UnexpectedChild,
-                            element: String::from_utf8_lossy(local).into_owned(),
+                            element: child_name,
                             attribute: None,
-                            message: format!(
-                                "<{}> not declared as a child of <{}>",
-                                String::from_utf8_lossy(local),
-                                parent.decl.name
-                            ),
+                            message,
                             byte_offset: offset,
                         });
                     } else {
@@ -172,14 +185,23 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                         let attr_decl = decl.attributes.iter().find(|ad| ad.name == name.as_str());
                         match attr_decl {
                             None => {
+                                let allowed = format_allowed_attrs(decl.attributes);
+                                let message = if decl.attributes.is_empty() {
+                                    format!(
+                                        "<{elem}> does not declare any attributes, but found '{name}'",
+                                        elem = decl.name,
+                                    )
+                                } else {
+                                    format!(
+                                        "<{elem}> can only have attributes {allowed}, but found '{name}'",
+                                        elem = decl.name,
+                                    )
+                                };
                                 violations.push(SchemaViolation {
                                     code: ViolationCode::UnknownAttribute,
                                     element: decl.name.to_string(),
                                     attribute: Some(name.clone()),
-                                    message: format!(
-                                        "attribute '{}' not declared on <{}>",
-                                        name, decl.name
-                                    ),
+                                    message,
                                     byte_offset: offset,
                                 });
                             }
@@ -281,6 +303,49 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
     }
 
     violations
+}
+
+/// Format a parent's declared children into a human-friendly "only
+/// these are allowed" fragment — `<a>, <b>, <c>` etc., capped at a
+/// sensible length so elements with dozens of valid children
+/// (e.g. `<run>`) produce readable messages.
+fn format_allowed_children(children: &[(&'static str, u32, Option<u32>)]) -> String {
+    const MAX_SHOWN: usize = 8;
+    let total = children.len();
+    let shown = total.min(MAX_SHOWN);
+    let mut out = String::new();
+    for (i, (name, _, _)) in children.iter().take(shown).enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push('<');
+        out.push_str(name);
+        out.push('>');
+    }
+    if total > MAX_SHOWN {
+        out.push_str(&format!(" (+{} more)", total - MAX_SHOWN));
+    }
+    out
+}
+
+/// Sister helper to [`format_allowed_children`] for attribute lists.
+fn format_allowed_attrs(attrs: &[crate::model::AttributeDecl]) -> String {
+    const MAX_SHOWN: usize = 8;
+    let total = attrs.len();
+    let shown = total.min(MAX_SHOWN);
+    let mut out = String::new();
+    for (i, ad) in attrs.iter().take(shown).enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push('\'');
+        out.push_str(ad.name);
+        out.push('\'');
+    }
+    if total > MAX_SHOWN {
+        out.push_str(&format!(" (+{} more)", total - MAX_SHOWN));
+    }
+    out
 }
 
 /// Helper: strip an `hh:` / `xs:` style prefix from a qualified name

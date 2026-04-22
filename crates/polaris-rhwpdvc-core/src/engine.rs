@@ -1888,8 +1888,9 @@ fn check_schema(ctx: &mut Ctx) -> bool {
         let violations = validate_xml(bytes, *root);
         for v in violations {
             let code = map_schema_violation(v.code);
-            let msg = format!("[{label}] {}", v.message);
-            let rec = integrity_violation(ctx, code, msg);
+            let mut rec = integrity_violation(ctx, code, v.message);
+            rec.file_label = (*label).to_string();
+            rec.byte_offset = v.byte_offset as u32;
             if !ctx.push(rec) {
                 return false;
             }
@@ -1904,8 +1905,9 @@ fn check_schema(ctx: &mut Ctx) -> bool {
         let violations = validate_xml(bytes, OwpmlRoot::Section);
         for v in violations {
             let code = map_schema_violation(v.code);
-            let msg = format!("[section{idx}] {}", v.message);
-            let rec = integrity_violation(ctx, code, msg);
+            let mut rec = integrity_violation(ctx, code, v.message);
+            rec.file_label = format!("section{idx}");
+            rec.byte_offset = v.byte_offset as u32;
             if !ctx.push(rec) {
                 return false;
             }

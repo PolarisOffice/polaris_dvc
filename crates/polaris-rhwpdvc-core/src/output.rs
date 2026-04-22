@@ -70,6 +70,22 @@ pub struct ViolationRecord {
     /// Developer-oriented diagnostic string. Not included in DVC-compatible
     /// output (upstream `getErrorString` is internal-only).
     pub error_string: String,
+
+    // ─── polaris-only location hints (omitted from DVC output) ───
+    //
+    // These travel alongside schema / integrity / container violations
+    // so the web demo (and other downstream tooling) can jump to the
+    // offending spot. They appear in JSON/XML output **only when set**
+    // — rule-category violations leave them empty, so DVC-compat
+    // golden tests don't change.
+    /// Which HWPX entry the violation refers to — e.g. `"header.xml"`,
+    /// `"Contents/section0.xml"`, `"content.hpf"`, or `""` when the
+    /// violation isn't anchored to a single file.
+    pub file_label: String,
+    /// Byte offset into `file_label`. `0` when unknown. Schema violations
+    /// populate this with the quick-xml reader position at the offending
+    /// event; integrity / container violations leave it at `0` for now.
+    pub byte_offset: u32,
 }
 
 impl ViolationRecord {
@@ -123,6 +139,28 @@ impl ViolationRecord {
             obj.insert("UseHyperlink".into(), json!(self.use_hyperlink));
         }
 
+        // polaris-only location hints + developer diagnostic string —
+        // emitted only when populated AND only for polaris-original
+        // JID categories (11000+), so DVC-compat golden output for
+        // rule/charshape/parashape/... violations (JIDs 1000-10999)
+        // stays byte-exact. `ErrorString` carries the specific message
+        // from the integrity / schema / container checkers (e.g.,
+        // which allowed children the unexpected one deviated from);
+        // the web demo and other consumers show this instead of the
+        // generic `ErrorCode::text()`.
+        let is_polaris_ext = self.error_code.value() >= 11000;
+        if is_polaris_ext {
+            if !self.error_string.is_empty() {
+                obj.insert("ErrorString".into(), json!(self.error_string));
+            }
+            if !self.file_label.is_empty() {
+                obj.insert("FileLabel".into(), json!(self.file_label));
+            }
+            if self.byte_offset != 0 {
+                obj.insert("ByteOffset".into(), json!(self.byte_offset));
+            }
+        }
+
         v
     }
 
@@ -167,6 +205,20 @@ impl ViolationRecord {
         }
         if opt.include_hyperlink() {
             write_xml_attr(out, "UseHyperlink", bool_xml(self.use_hyperlink));
+        }
+        // polaris-only extras — mirror the JSON gate exactly so the
+        // two formats stay diffable.
+        let is_polaris_ext = self.error_code.value() >= 11000;
+        if is_polaris_ext {
+            if !self.error_string.is_empty() {
+                write_xml_attr(out, "ErrorString", &self.error_string);
+            }
+            if !self.file_label.is_empty() {
+                write_xml_attr(out, "FileLabel", &self.file_label);
+            }
+            if self.byte_offset != 0 {
+                write_xml_attr(out, "ByteOffset", &self.byte_offset.to_string());
+            }
         }
         out.push_str("/>\n");
     }
@@ -230,6 +282,8 @@ mod tests {
             use_hyperlink: true,
             is_in_shape: true,
             error_string: String::new(),
+            file_label: String::new(),
+            byte_offset: 0,
         }
     }
 
