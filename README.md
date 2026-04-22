@@ -127,6 +127,7 @@ const report = validate(hwpxBytes, specObject, {
 ## 문서
 
 - [`docs/hwpx-validation-scope.md`](docs/hwpx-validation-scope.md) — 네 검증 축 상세 설계
+- [`docs/schema-drift-catalog.md`](docs/schema-drift-catalog.md) — 실전 HWPX 샘플에서 나온 Schema 축 findings 와 판정 (divergence vs codegen bug)
 - [`docs/cli-compat.md`](docs/cli-compat.md) — CLI 플래그 표면 전체, 업스트림 대응·차이
 - [`docs/jid-registry.md`](docs/jid-registry.md) — JID 레지스트리 재생성 및 엔진 확장
 - [`docs/golden-tests.md`](docs/golden-tests.md) — 회귀 테스트 운영
