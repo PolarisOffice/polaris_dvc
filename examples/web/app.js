@@ -577,44 +577,46 @@ function openFileInViewer(path, highlightOffset = null) {
   viewer.innerHTML =
     `<div class="viewer-header">${escapeHtml(path)} · ${humanBytes(bytes.length)}${lineInfo}</div>` +
     `<div class="viewer-content">${rendered}</div>`;
-  if (targetLine) {
-    const el = viewer.querySelector(`.line[data-line="${targetLine}"]`);
-    if (el) el.scrollIntoView({ block: "center" });
-    // In addition to the line-highlight, select the actual offending
-    // element text natively — like the user dragged over it with the
-    // mouse. Helps pinpoint *which* tag on a line with several.
-    //
-    // Defer to rAF: any scroll issued by the click handler (panel
-    // scrollIntoView, or the `el.scrollIntoView` above) can land in
-    // the same frame and clobber a same-tick selection. Running on
-    // the next animation frame ensures layout has settled, the
-    // scroll is committed, and our Range resolves against the final
-    // DOM positions.
-    if (highlightOffset != null) {
-      requestAnimationFrame(() => {
-        selectOffendingRange(viewer, bytes, text, highlightOffset);
-      });
-    }
+  if (targetLine && highlightOffset != null) {
+    // Defer to rAF: the click handler's panel scroll and our own
+    // layout need to settle before we resolve DOM positions for the
+    // Range. `selectOffendingRange` handles both the native
+    // selection and scrolling the selection into view — using the
+    // range's own start node as the scroll anchor so `pre-wrap`
+    // line wrapping doesn't misalign the viewport against the
+    // visual position of the selection.
+    requestAnimationFrame(() => {
+      selectOffendingRange(viewer, bytes, text, highlightOffset);
+    });
   }
 }
 
-// Given the offending byte position (quick-xml reports the offset
-// AFTER the closing `>` of the tag that triggered the finding), build
-// a native browser text selection from the most recent `<` up to that
-// offset — so the user sees the full open tag highlighted, copyable
-// into the clipboard. Byte→char→(line,col)→DOM conversion accounts
-// for multi-byte UTF-8 and for HTML entities expanding to single
-// characters in the rendered text nodes.
-function selectOffendingRange(viewerEl, bytes, text, endByte) {
-  // 1. Scan backwards for the nearest `<`.
-  let startByte = -1;
-  for (let i = Math.min(endByte, bytes.length) - 1; i >= 0; i--) {
-    if (bytes[i] === 0x3c /* '<' */) {
-      startByte = i;
+// Given the offending byte position (quick-xml's
+// `Reader::buffer_position` captured BEFORE `read_event_into`, i.e.
+// the position at the START of the tag that triggered the finding),
+// build a native browser text selection covering the whole open tag —
+// from the `<` up to and including the matching `>` — so the user
+// sees exactly the element that violated the rule. Byte→char→(line,
+// col)→DOM conversion accounts for multi-byte UTF-8 and for HTML
+// entities expanding to single characters in the rendered text nodes.
+function selectOffendingRange(viewerEl, bytes, text, startByte) {
+  if (startByte < 0 || startByte >= bytes.length) return;
+  // Scan forward from startByte for the matching `>`, ignoring `>`
+  // characters inside quoted attribute values.
+  let endByte = -1;
+  let inQuote = 0;
+  for (let i = startByte; i < bytes.length; i++) {
+    const c = bytes[i];
+    if (inQuote) {
+      if (c === inQuote) inQuote = 0;
+    } else if (c === 0x22 /* " */ || c === 0x27 /* ' */) {
+      inQuote = c;
+    } else if (c === 0x3e /* > */) {
+      endByte = i + 1;
       break;
     }
   }
-  if (startByte < 0) return;
+  if (endByte < 0) return;
   const clampedEnd = Math.min(endByte, bytes.length);
 
   // 2. Byte offset → character offset (length in JS string).
@@ -659,7 +661,11 @@ function selectOffendingRange(viewerEl, bytes, text, endByte) {
   const endPos = findDom(b.line, b.col);
   if (!startPos || !endPos) return;
 
-  // 5. Build the Range + apply selection.
+  // 5. Build the Range + apply selection, then scroll the selection
+  //    into view. We use the start node's parent instead of the
+  //    containing `.line` div because with `pre-wrap` wrapping, a
+  //    single logical line can span many visual rows and centering
+  //    the whole line div can leave the actual selection offscreen.
   try {
     const range = document.createRange();
     range.setStart(startPos.node, startPos.offset);
@@ -668,6 +674,13 @@ function selectOffendingRange(viewerEl, bytes, text, endByte) {
     if (sel) {
       sel.removeAllRanges();
       sel.addRange(range);
+    }
+    const scrollAnchor =
+      startPos.node.nodeType === Node.TEXT_NODE
+        ? startPos.node.parentElement
+        : startPos.node;
+    if (scrollAnchor) {
+      scrollAnchor.scrollIntoView({ block: "center", inline: "nearest" });
     }
   } catch (_e) {
     // DOM positions can occasionally fall out of sync if the viewer
