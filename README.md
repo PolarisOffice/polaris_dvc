@@ -53,22 +53,39 @@ cargo run -p polaris-rhwpdvc-cli -- [OPTIONS] <HWPX_FILE>
 
 ### 입력
 
-- `<HWPX_FILE>` — 검증할 HWPX 파일 경로. `-` 를 주면 stdin 으로 바이트 입력을 받는다.
-- `-t <SPEC>` — 사용자 규칙 spec JSON 파일. `fontsize`, `font.allowlist` 같은 구체적 값을 담은 파일이다. `schemas/jsonFullSpec.json` 은 "사용 가능한 필드 전체를 나열한 메타 레퍼런스"이지 실제 spec 이 아니므로 여기에 넘기면 안 된다.
+| 플래그 | 동작 |
+|---|---|
+| `<HWPX_FILE>` | 검증할 HWPX 파일 경로. `-` 이면 stdin 으로 바이트 입력. |
+| `-t <SPEC>` | 사용자 규칙 spec JSON 파일. `fontsize`, `font.allowlist` 같은 구체적 값을 담은 파일이다. `schemas/jsonFullSpec.json` 은 "사용 가능한 필드 전체를 나열한 메타 레퍼런스"지 실제 spec 이 아니므로 여기에 넘기면 안 된다. |
 
 ### 출력
 
-- `-j` / `--format=json` (기본) — DVC 호환 JSON 배열. 필드명·순서는 업스트림 `DVCOutputJson.cpp` 와 동일.
-- `-x` / `--format=xml` — 같은 위반 목록을 attribute-per-field XML 로. polaris 확장 기능이며 `--dvc-strict` 와 함께 쓰면 비활성화된다.
-- `--file=<PATH>` — 결과를 파일로 저장. 생략 시 stdout.
+| 플래그 | 동작 |
+|---|---|
+| `-j`, `--format=json` | (기본) DVC 호환 JSON 배열. 필드명·순서는 업스트림 `DVCOutputJson.cpp` 와 동일. |
+| `-x`, `--format=xml` | 같은 위반 목록을 attribute-per-field XML 로. polaris 확장 기능이며 `--dvc-strict` 와 함께 쓰면 비활성화된다. |
+| `--file=<PATH>` | 결과를 파일로 저장. 생략 시 stdout. |
 
 ### 검사 모드
 
-- `-a` / `--all` (기본) — 모든 위반을 수집.
-- `-s` / `--simple` — 첫 위반에서 즉시 중단.
-- `--enable-schema` — 스키마 축(JID 13000+) 활성화. 기본은 off — 생성된 XSD 모델이 실제 HWPX 생태계의 drift (`<hp:linesegarray>` 등) 와 충돌해 false positive 가 다수 발생하기 때문이다.
-- `--dvc-strict` — DVC.exe 가 실제 구현한 JID 만 emit. 11000/12000/13000 축과 upstream no-op JID(table margin, bgfill 등)를 출력에서 제외해 업스트림과 바이트 수준 비교가 가능한 모드.
-- `--output-option=<set>` — 출력에 포함할 조건부 필드를 쉼표로 선택 (`d`=default, `o`=outline, `t`=table, `i`=image, `p`=page, `y`=style, `k`=hyperlink). 업스트림 DVC 의 7 개 단일-문자 토글(`-d`/`-o`/…) 을 하나의 long flag 로 통합한 것.
+| 플래그 | 동작 |
+|---|---|
+| `-a`, `--all` | (기본) 모든 위반을 수집. |
+| `-s`, `--simple` | 첫 위반에서 즉시 중단. |
+| `--enable-schema` | 스키마 축(JID 13000+) 활성화. 기본은 off — 생성된 XSD 모델이 실제 HWPX 생태계의 drift(`<hp:linesegarray>` 등) 와 충돌해 false positive 가 다수 발생하기 때문. |
+| `--dvc-strict` | DVC.exe 가 실제 구현한 JID 만 emit. 11000/12000/13000 축과 upstream no-op JID(table margin, bgfill 등)를 출력에서 제외해 업스트림과 바이트 수준 비교가 가능한 모드. |
+| `--output-option=<set>` | 출력에 포함할 조건부 필드를 쉼표로 선택. `d`=default, `o`=outline, `t`=table, `i`=image, `p`=page, `y`=style, `k`=hyperlink. 업스트림 DVC 의 7 개 단일-문자 토글(`-d`/`-o`/…) 을 하나로 통합한 것. |
+
+### Exit code
+
+| 코드 | 의미 |
+|---|---|
+| `0` | 위반 없음 |
+| `1` | 위반 검출 |
+| `2` | 사용법 오류 (플래그 조합 불가, 파일 없음 등) |
+| `3` | HWPX 파싱 실패 |
+
+업스트림 DVC 는 exit code 정책을 명시하지 않아 polaris 자체 정의. 세부 대응표: [`docs/cli-compat.md`](docs/cli-compat.md).
 
 ### 예제
 
@@ -88,15 +105,6 @@ cargo run -p polaris-rhwpdvc-cli -- --enable-schema -t my-spec.json doc.hwpx
 # stdin 입력
 cat doc.hwpx | cargo run -p polaris-rhwpdvc-cli -- -t my-spec.json -
 ```
-
-### Exit code
-
-- `0` — 위반 없음
-- `1` — 위반 검출
-- `2` — 사용법 오류 (플래그 조합 불가, 파일 없음 등)
-- `3` — HWPX 파싱 실패
-
-업스트림 DVC 는 exit code 정책을 명시하지 않아 polaris 자체 정의. 세부 대응표: [`docs/cli-compat.md`](docs/cli-compat.md).
 
 ## WASM API
 
