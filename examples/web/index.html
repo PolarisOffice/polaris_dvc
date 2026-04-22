@@ -198,6 +198,7 @@
         margin-bottom: 12px;
         font-size: 14px;
         align-items: center;
+        flex-wrap: wrap;
       }
       .results-summary .count {
         font-weight: 600;
@@ -208,6 +209,62 @@
       .results-summary .count.err {
         color: var(--err);
       }
+      /* Per-axis breakdown chips under the main summary. Each chip
+         is clickable to filter the violations table to just that
+         axis. Inactive chips render with reduced opacity. */
+      .axis-breakdown {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .axis-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-size: 12px;
+        border-radius: 999px;
+        background: var(--code-bg);
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+        border: 1px solid transparent;
+      }
+      .axis-chip.active {
+        background: #fff;
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .axis-chip .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .axis-chip[data-axis="rule"] .dot { background: #2563eb; }
+      .axis-chip[data-axis="integrity"] .dot { background: #ca8a04; }
+      .axis-chip[data-axis="container"] .dot { background: #9333ea; }
+      .axis-chip[data-axis="schema"] .dot { background: #0891b2; }
+      .axis-chip[data-axis="unknown"] .dot { background: #6b7280; }
+      .axis-chip .n {
+        font-weight: 600;
+        color: var(--fg);
+      }
+      /* Category column badge rendering — small pill per violation row. */
+      .axis-badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: #fff;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .axis-badge.rule      { background: #2563eb; }
+      .axis-badge.integrity { background: #ca8a04; }
+      .axis-badge.container { background: #9333ea; }
+      .axis-badge.schema    { background: #0891b2; }
+      .axis-badge.unknown   { background: #6b7280; }
       table.violations {
         width: 100%;
         border-collapse: collapse;
@@ -306,8 +363,16 @@
           <button data-preset="all">All categories</button>
           <button
             data-preset="integrity"
-            title="Empty spec — only the polaris-original structural-integrity checks (JID 11000-11999) run. Good for 'is this HWPX well-formed?' questions."
+            title="Empty spec — only Integrity (JID 11000-11999) + Container (12000-12999) axes run. Good for 'is this HWPX well-formed?' questions."
           >Integrity only</button>
+          <button
+            data-preset="container"
+            title="Empty spec — only Container-level (JID 12000) ZIP-shape checks. Fastest screen for whether a file is a valid HWPX container at all."
+          >Container only</button>
+          <button
+            data-preset="schema"
+            title="Empty spec + auto-enable KS X 6101 schema pass. Reports every OWPML XSD divergence (element/attribute/enum). JID 13000-13999."
+          >Schema only</button>
           <span class="sep"></span>
           <button id="load-spec-btn" title="Load a spec.json from disk">📂 Load…</button>
           <button id="save-spec-btn" title="Download the current spec as spec.json">💾 Save</button>
@@ -355,6 +420,10 @@
           <label class="checkbox">
             <input id="stop-on-first" type="checkbox" />
             Stop on first violation
+          </label>
+          <label class="checkbox" title="Opt in to KS X 6101 XSD schema conformance checks (JID 13000-13999). Off by default because the bootstrap schema model is a subset — it may flag elements it doesn't yet cover as 'unexpected'.">
+            <input id="enable-schema" type="checkbox" />
+            Enable schema checks (KS X 6101)
           </label>
         </div>
         <div class="actions">

@@ -65,7 +65,31 @@ const PRESETS = {
   // other rules will still catch orphan refs / bad mimetype / broken
   // BinData sync". Handy for LLM-generated or hand-crafted docs.
   integrity: {},
+  // Container-only — same empty-spec shape, but the UI layer reads
+  // the preset name and enables/disables the other axis toggles to
+  // match. Exists as a UX hint more than a distinct spec.
+  container: {},
+  // Schema-only — empty spec; the UI flips `enable-schema` on when
+  // this preset is selected so the user sees only JID 13000-13999.
+  schema: {},
 };
+
+// Axis metadata shared by the UI layer. Each JID range maps to one
+// axis; the label and short description appear in the breakdown
+// chips and the per-row badge. Keep this in sync with
+// `crates/polaris-rhwpdvc-core/src/error_codes.rs::Category`.
+const AXES = [
+  { id: "rule",      label: "Rule",      min: 1000,  max: 7999,  desc: "DVC-compatible rule spec (CharShape / ParaShape / Table / …)" },
+  { id: "integrity", label: "Integrity", min: 11000, max: 11999, desc: "Cross-ref / manifest / lineseg consistency (polaris-original)" },
+  { id: "container", label: "Container", min: 12000, max: 12999, desc: "ZIP well-formedness (polaris-original)" },
+  { id: "schema",    label: "Schema",    min: 13000, max: 13999, desc: "KS X 6101 XSD conformance (polaris-original, opt-in)" },
+];
+function axisForCode(code) {
+  for (const a of AXES) {
+    if (code >= a.min && code <= a.max) return a.id;
+  }
+  return "unknown";
+}
 
 // Mutable state
 let hwpxBytes = null;
@@ -129,6 +153,13 @@ function loadPreset(name) {
   $("#spec-info").textContent = `preset: ${name}`;
   activeGolden = null;
   $("#diff-expected-btn").style.display = "none";
+  // Schema axis is opt-in. The `schema` preset auto-enables it
+  // (that's the only way the preset produces findings); any other
+  // preset leaves the toggle alone so the user's explicit choice
+  // is respected.
+  if (name === "schema") {
+    $("#enable-schema").checked = true;
+  }
 }
 
 async function handleSpecFile(file) {
@@ -286,6 +317,7 @@ function currentOpts() {
     dvcStrict: $("#profile").value === "strict",
     stopOnFirst: $("#stop-on-first").checked,
     outputOption: $("#output-option").value,
+    enableSchema: $("#enable-schema").checked,
   };
 }
 
@@ -332,7 +364,11 @@ function runValidation() {
 function renderJsonResults(list, opts, ms) {
   const container = $("#results");
   const mode = opts.dvcStrict ? "dvc-strict" : "extended";
-  setStatus(`Done in ${ms.toFixed(1)} ms (${mode} · ${opts.outputOption}).`, "ok");
+  const schemaTag = opts.enableSchema ? " · schema+" : "";
+  setStatus(
+    `Done in ${ms.toFixed(1)} ms (${mode} · ${opts.outputOption}${schemaTag}).`,
+    "ok",
+  );
   if (!Array.isArray(list)) {
     container.innerHTML = `<div class="empty">Unexpected result shape.</div>`;
     return;
@@ -349,15 +385,43 @@ function renderJsonResults(list, opts, ms) {
     return;
   }
 
-  const groups = new Map();
+  // Bin by axis (JID range → rule/integrity/container/schema).
+  // Also tally distinct error codes for the summary header.
+  const axisCounts = Object.fromEntries(AXES.map((a) => [a.id, 0]));
+  axisCounts.unknown = 0;
+  const byCode = new Map();
   for (const v of list) {
-    const key = v.ErrorCode;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(v);
+    const a = axisForCode(v.ErrorCode);
+    axisCounts[a] = (axisCounts[a] || 0) + 1;
+    if (!byCode.has(v.ErrorCode)) byCode.set(v.ErrorCode, []);
+    byCode.get(v.ErrorCode).push(v);
   }
+
+  // Build the axis-breakdown chip row. Only axes that actually
+  // have findings get a chip; "unknown" appears if any code fell
+  // outside the registered ranges (shouldn't in practice).
+  const visibleAxes = AXES.filter((a) => axisCounts[a.id] > 0).map((a) => a.id);
+  if (axisCounts.unknown > 0) visibleAxes.push("unknown");
+  const chipsHtml = visibleAxes
+    .map((axis) => {
+      const meta = AXES.find((a) => a.id === axis) || {
+        id: "unknown",
+        label: "Unknown",
+        desc: "JID outside any registered range",
+      };
+      return `<button type="button" class="axis-chip active" data-axis="${axis}" title="${escapeHtml(meta.desc)}">
+        <span class="dot"></span>
+        <span>${meta.label}</span>
+        <span class="n">${axisCounts[axis]}</span>
+      </button>`;
+    })
+    .join("");
 
   const rows = list
     .map((v) => {
+      const axis = axisForCode(v.ErrorCode);
+      const axisMeta = AXES.find((a) => a.id === axis);
+      const axisLabel = axisMeta ? axisMeta.label : "Unknown";
       const loc = `p.${v.PageNo ?? "?"}/l.${v.LineNo ?? "?"}`;
       const table =
         v.IsInTable === true
@@ -383,7 +447,8 @@ function renderJsonResults(list, opts, ms) {
         ? `<div class="doc-text">“${escapeHtml(v.errorText)}”</div>`
         : "";
       return `
-        <tr>
+        <tr data-axis="${axis}">
+          <td><span class="axis-badge ${axis}">${axisLabel}</span></td>
           <td class="error-code">${v.ErrorCode}</td>
           <td class="loc">${loc}</td>
           <td class="loc">char=${v.CharIDRef ?? "?"} para=${v.ParaPrIDRef ?? "?"}</td>
@@ -400,11 +465,13 @@ function renderJsonResults(list, opts, ms) {
   container.innerHTML = `
     <div class="results-summary">
       <span class="count err">${list.length} violation(s)</span>
-      <span>across ${groups.size} error code(s)</span>
+      <span>across ${byCode.size} error code(s) · click an axis chip to filter</span>
     </div>
+    <div class="axis-breakdown">${chipsHtml}</div>
     <table class="violations">
       <thead>
         <tr>
+          <th>Axis</th>
           <th>Code</th>
           <th>Location</th>
           <th>Refs</th>
@@ -419,12 +486,42 @@ function renderJsonResults(list, opts, ms) {
       <summary>Raw JSON (DVC-shaped)</summary>
       <pre>${escapeHtml(prettyJson(list))}</pre>
     </details>`;
+
+  // Wire chip filtering. Multi-select — each chip is an independent
+  // toggle. Rows whose axis isn't in the active set get hidden.
+  const chipEls = container.querySelectorAll(".axis-chip");
+  const refreshFilter = () => {
+    const active = new Set(
+      Array.from(chipEls)
+        .filter((c) => c.classList.contains("active"))
+        .map((c) => c.dataset.axis),
+    );
+    // If the user deactivates every chip, fall back to showing all
+    // (no chips active feels like a dead state; interpret as "clear
+    // filter").
+    const showAll = active.size === 0;
+    const trs = container.querySelectorAll("table.violations tbody tr");
+    trs.forEach((tr) => {
+      tr.style.display =
+        showAll || active.has(tr.dataset.axis) ? "" : "none";
+    });
+  };
+  chipEls.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      chip.classList.toggle("active");
+      refreshFilter();
+    });
+  });
 }
 
 function renderXmlResults(xml, count, opts, ms) {
   const container = $("#results");
   const mode = opts.dvcStrict ? "dvc-strict" : "extended";
-  setStatus(`Done in ${ms.toFixed(1)} ms (${mode} · ${opts.outputOption}).`, "ok");
+  const schemaTag = opts.enableSchema ? " · schema+" : "";
+  setStatus(
+    `Done in ${ms.toFixed(1)} ms (${mode} · ${opts.outputOption}${schemaTag}).`,
+    "ok",
+  );
   const cls = count === 0 ? "ok" : "err";
   const summary =
     count === 0
