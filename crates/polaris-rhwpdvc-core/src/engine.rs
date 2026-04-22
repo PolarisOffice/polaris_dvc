@@ -54,11 +54,20 @@ pub struct EngineOptions {
     pub stop_on_first: bool,
     pub profile: CheckProfile,
     /// Enable KS X 6101 XSD conformance checks (JID 13000-13999). Off
-    /// by default because the bundled `generated_owpml.rs` is a
-    /// bootstrap subset — on larger documents it produces many
-    /// "unexpected element" / "unknown attribute" findings for elements
-    /// the schema model doesn't cover yet. When `tools/gen-owpml/`
-    /// lands a full schema this default can flip.
+    /// by default. The bundled `generated_owpml.rs` is produced by
+    /// `tools/gen-owpml/` from the official KS X 6101 XSDs, so it's
+    /// materially complete (~292 element decls, enum/type/cardinality
+    /// coverage). But real-world HWPX drifts from the formal spec in
+    /// several places: `<hp:linesegarray>` isn't declared in the XSD
+    /// at all, `<hh:borderFill>` carries diagonal-line attrs (`slash`,
+    /// `backSlash`, …) that the XSD omits, and the
+    /// `compatibleDocument@targetProgram` enum is out of date (misses
+    /// `HWP2018`+). Enabling this pass on a typical document emits
+    /// 30-40 findings that are XSD-correct but document-legal; until we
+    /// augment the generated schema with a drift-patch layer, the
+    /// default stays off so the 11000/12000 axes aren't drowned out.
+    /// Explicit opt-in (`--enable-schema` on the CLI, `enableSchema:
+    /// true` in the WASM API) is the supported way to run this axis.
     pub enable_schema: bool,
 }
 

@@ -10,5 +10,5 @@ publish = false
 [workspace]
 
 [dependencies]
-quick-xml = "0.31"
+roxmltree = "0.19"
 thiserror = "1"

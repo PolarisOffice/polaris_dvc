@@ -3,8 +3,17 @@
 use polaris_rhwpdvc_schema::{validate_xml, OwpmlRoot, ViolationCode};
 
 #[test]
-fn empty_head_passes() {
-    let xml = br#"<?xml version="1.0"?><hh:head xmlns:hh="h"><hh:refList/></hh:head>"#;
+fn minimal_head_passes() {
+    // Under the real KS X 6101 HEAD schema, <head> requires:
+    //   - attributes: version, secCnt
+    //   - children (min 1 each): refList, beginNum, trackchangeConfig
+    // We include just enough of each to clear the minimum bar.
+    let xml = br#"<?xml version="1.0"?>
+<hh:head xmlns:hh="h" version="1.0" secCnt="1">
+  <hh:beginNum page="1" footnote="1" endnote="1" pic="1" tbl="1" equation="1"/>
+  <hh:refList/>
+  <hh:trackchangeConfig/>
+</hh:head>"#;
     let violations = validate_xml(xml, OwpmlRoot::Head);
     assert!(
         violations.is_empty(),
