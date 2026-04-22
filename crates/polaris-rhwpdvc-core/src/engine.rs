@@ -1453,6 +1453,15 @@ fn check_integrity(ctx: &mut Ctx) -> bool {
     if !check_integrity_structural_facts(ctx) {
         return false;
     }
+    if !check_integrity_duplicate_ids(ctx) {
+        return false;
+    }
+    if !check_integrity_border_fill_refs(ctx) {
+        return false;
+    }
+    if !check_integrity_font_refs(ctx) {
+        return false;
+    }
     true
 }
 
@@ -1692,6 +1701,205 @@ fn check_integrity_structural_facts(ctx: &mut Ctx) -> bool {
         }
     }
 
+    true
+}
+
+/// Phase 1 — duplicate-id checks across every header table.
+/// Two header entries with the same id make any downstream IDRef
+/// ambiguous. Each JID emits one violation per duplicated id value
+/// (not per pair) to keep the list compact on bulk-duplicate specs.
+fn check_integrity_duplicate_ids(ctx: &mut Ctx) -> bool {
+    use std::collections::BTreeMap;
+
+    /// Group ids and collect the duplicates (ids that appear > once).
+    fn dups<I: IntoIterator<Item = u32>>(ids: I) -> Vec<u32> {
+        let mut counts: BTreeMap<u32, usize> = BTreeMap::new();
+        for id in ids {
+            *counts.entry(id).or_insert(0) += 1;
+        }
+        counts
+            .into_iter()
+            .filter_map(|(id, n)| if n > 1 { Some(id) } else { None })
+            .collect()
+    }
+
+    let h = &ctx.doc.header;
+
+    // Emit one violation per (JID, duplicate id). Each category gets
+    // its own JID so downstream tooling can filter by header table.
+    let checks: [(ErrorCode, Vec<u32>, &str); 7] = [
+        (
+            jid::INTEGRITY_DUPLICATE_CHAR_PR_ID,
+            dups(h.char_shapes.iter().map(|c| c.id)),
+            "<hh:charPr>",
+        ),
+        (
+            jid::INTEGRITY_DUPLICATE_PARA_PR_ID,
+            dups(h.para_shapes.iter().map(|p| p.id)),
+            "<hh:paraPr>",
+        ),
+        (
+            jid::INTEGRITY_DUPLICATE_BORDER_FILL_ID,
+            dups(h.border_fills.iter().map(|b| b.id)),
+            "<hh:borderFill>",
+        ),
+        (
+            jid::INTEGRITY_DUPLICATE_STYLE_ID,
+            dups(h.styles.iter().map(|s| s.id)),
+            "<hh:style>",
+        ),
+        (
+            // FaceName ids restart per language block in the HWPX spec;
+            // our parser flattens all blocks into one Vec. A duplicate
+            // here means two fonts share id WITHIN the same (lang, id)
+            // pair, which IS a bug. Keying by (lang, id) to avoid false
+            // positives from two languages both numbering from 0.
+            jid::INTEGRITY_DUPLICATE_FACE_NAME_ID,
+            {
+                let mut counts: BTreeMap<(String, u32), usize> = BTreeMap::new();
+                for f in &h.face_names {
+                    *counts.entry((f.lang.clone(), f.id)).or_insert(0) += 1;
+                }
+                counts
+                    .into_iter()
+                    .filter_map(|((_lang, id), n)| if n > 1 { Some(id) } else { None })
+                    .collect()
+            },
+            "<hh:font> (within a fontface language block)",
+        ),
+        (
+            jid::INTEGRITY_DUPLICATE_NUMBERING_ID,
+            dups(h.numberings.iter().map(|n| n.id)),
+            "<hh:numbering>",
+        ),
+        (
+            jid::INTEGRITY_DUPLICATE_BULLET_ID,
+            dups(h.bullets.iter().map(|b| b.id)),
+            "<hh:bullet>",
+        ),
+    ];
+
+    for (code, dup_ids, label) in checks {
+        for id in dup_ids {
+            let v = integrity_violation(ctx, code, format!("duplicate {label} id={id}"));
+            if !ctx.push(v) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Phase 1 — body elements that carry a `borderFillIDRef` must point
+/// at a declared `<hh:borderFill>`. The HWPX schema lets paraPr, charPr,
+/// table, tableCell, and page all reference borderFills; our parser
+/// currently captures this only on `<hp:tbl>` (Table), so we check
+/// tables now and keep the paraPr/charPr JIDs (11041/11042) reserved
+/// for when the parser surfaces those fields.
+fn check_integrity_border_fill_refs(ctx: &mut Ctx) -> bool {
+    let h = &ctx.doc.header;
+    use std::collections::HashSet;
+    let known: HashSet<u32> = h.border_fills.iter().map(|b| b.id).collect();
+
+    let mut orphans: Vec<(u32, u32)> = Vec::new(); // (table_id, bf_idref)
+    for section in &ctx.doc.sections {
+        for table in &section.tables {
+            if table.border_fill_id_ref != 0 && !known.contains(&table.border_fill_id_ref) {
+                orphans.push((table.id, table.border_fill_id_ref));
+            }
+        }
+    }
+
+    for (tid, bf) in orphans {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_ORPHAN_BORDER_FILL_IDREF,
+            format!(
+                "table id={tid} references borderFillIDRef={bf} with no matching <hh:borderFill>"
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Phase 1 — every `<hh:charPr><hh:fontRef>` sub-attribute must point
+/// at a `<hh:font id=…>` that exists in the corresponding language
+/// fontface block. We match by (lang, id) so "HANGUL id 0" and
+/// "LATIN id 0" resolve independently.
+fn check_integrity_font_refs(ctx: &mut Ctx) -> bool {
+    let h = &ctx.doc.header;
+    use std::collections::HashSet;
+
+    // Build lookup: set of (lang, id) pairs present.
+    let by_lang: HashSet<(String, u32)> = h
+        .face_names
+        .iter()
+        .map(|f| (f.lang.clone(), f.id))
+        .collect();
+
+    let lang_of = |slot: &str| match slot {
+        "hangul" => "HANGUL",
+        "latin" => "LATIN",
+        "hanja" => "HANJA",
+        "japanese" => "JAPANESE",
+        "other" => "OTHER",
+        "symbol" => "SYMBOL",
+        "user" => "USER",
+        _ => "",
+    };
+
+    struct Miss {
+        char_pr_id: u32,
+        slot: &'static str,
+        id: u32,
+    }
+    let mut misses: Vec<Miss> = Vec::new();
+
+    for c in &h.char_shapes {
+        let slots: [(&'static str, u32); 7] = [
+            ("hangul", c.font_ref.hangul),
+            ("latin", c.font_ref.latin),
+            ("hanja", c.font_ref.hanja),
+            ("japanese", c.font_ref.japanese),
+            ("other", c.font_ref.other),
+            ("symbol", c.font_ref.symbol),
+            ("user", c.font_ref.user),
+        ];
+        for (slot, id) in slots {
+            let lang = lang_of(slot);
+            // If the document has no fontface entries for this language
+            // at all, the IDRef has nothing to match; treat as orphan
+            // only if the language block exists but the id is absent.
+            let lang_has_any = h.face_names.iter().any(|f| f.lang == lang);
+            if lang_has_any && !by_lang.contains(&(lang.to_string(), id)) {
+                misses.push(Miss {
+                    char_pr_id: c.id,
+                    slot,
+                    id,
+                });
+            }
+        }
+    }
+
+    for m in misses {
+        let v = integrity_violation(
+            ctx,
+            jid::INTEGRITY_ORPHAN_FONT_REF,
+            format!(
+                "charPr id={} has fontRef {}={} with no matching <hh:font> in the {} block",
+                m.char_pr_id,
+                m.slot,
+                m.id,
+                lang_of(m.slot)
+            ),
+        );
+        if !ctx.push(v) {
+            return false;
+        }
+    }
     true
 }
 

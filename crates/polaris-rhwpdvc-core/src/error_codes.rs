@@ -135,6 +135,16 @@ impl ErrorCode {
         const INTEGRITY_BINDATA_MANIFEST_MISSING: u32 =
             jid::INTEGRITY_BINDATA_MANIFEST_MISSING_FILE.value();
         const INTEGRITY_BINDATA_ORPHAN: u32 = jid::INTEGRITY_BINDATA_ORPHAN_FILE.value();
+        const INTEGRITY_DUP_CHAR_PR: u32 = jid::INTEGRITY_DUPLICATE_CHAR_PR_ID.value();
+        const INTEGRITY_DUP_PARA_PR: u32 = jid::INTEGRITY_DUPLICATE_PARA_PR_ID.value();
+        const INTEGRITY_DUP_BORDER_FILL: u32 = jid::INTEGRITY_DUPLICATE_BORDER_FILL_ID.value();
+        const INTEGRITY_DUP_STYLE: u32 = jid::INTEGRITY_DUPLICATE_STYLE_ID.value();
+        const INTEGRITY_DUP_FACE_NAME: u32 = jid::INTEGRITY_DUPLICATE_FACE_NAME_ID.value();
+        const INTEGRITY_DUP_NUMBERING: u32 = jid::INTEGRITY_DUPLICATE_NUMBERING_ID.value();
+        const INTEGRITY_DUP_BULLET: u32 = jid::INTEGRITY_DUPLICATE_BULLET_ID.value();
+        const INTEGRITY_FONT_REF: u32 = jid::INTEGRITY_ORPHAN_FONT_REF.value();
+        const INTEGRITY_PARA_BF: u32 = jid::INTEGRITY_ORPHAN_BORDER_FILL_IDREF.value();
+        const INTEGRITY_CHAR_BF: u32 = jid::INTEGRITY_ORPHAN_CHAR_BORDER_FILL_IDREF.value();
 
         match self.0 {
             FONTSIZE => "Font size does not match specification",
@@ -217,6 +227,16 @@ impl ErrorCode {
                 "manifest lists a BinData item whose ZIP entry is missing"
             }
             INTEGRITY_BINDATA_ORPHAN => "ZIP BinData entry is not referenced by the manifest",
+            INTEGRITY_DUP_CHAR_PR => "duplicate <hh:charPr> id in header",
+            INTEGRITY_DUP_PARA_PR => "duplicate <hh:paraPr> id in header",
+            INTEGRITY_DUP_BORDER_FILL => "duplicate <hh:borderFill> id in header",
+            INTEGRITY_DUP_STYLE => "duplicate <hh:style> id in header",
+            INTEGRITY_DUP_FACE_NAME => "duplicate <hh:font> id within a language block",
+            INTEGRITY_DUP_NUMBERING => "duplicate <hh:numbering> id in header",
+            INTEGRITY_DUP_BULLET => "duplicate <hh:bullet> id in header",
+            INTEGRITY_FONT_REF => "fontRef references an unknown faceName id",
+            INTEGRITY_PARA_BF => "paraPr borderFillIDRef has no matching borderFill",
+            INTEGRITY_CHAR_BF => "charPr borderFillIDRef has no matching borderFill",
 
             _ => "Rule violation",
         }
@@ -338,6 +358,42 @@ pub mod jid {
     /// ZIP contains a `BinData/*` entry that no manifest item points
     /// at — orphan binary asset.
     pub const INTEGRITY_BINDATA_ORPHAN_FILE: ErrorCode = ErrorCode::new(11022);
+
+    // ─── Duplicate-ID checks (11030-11039) ────────────────────────────
+    // Two header entries sharing an `id` attribute make any downstream
+    // IDRef ambiguous — first-wins vs last-wins vs implementation-defined
+    // is a renderer-specific coin flip. These are hard conformance defects.
+
+    /// Two or more `<hh:charPr>` entries share the same `id`.
+    pub const INTEGRITY_DUPLICATE_CHAR_PR_ID: ErrorCode = ErrorCode::new(11030);
+    /// Two or more `<hh:paraPr>` entries share the same `id`.
+    pub const INTEGRITY_DUPLICATE_PARA_PR_ID: ErrorCode = ErrorCode::new(11031);
+    /// Two or more `<hh:borderFill>` entries share the same `id`.
+    pub const INTEGRITY_DUPLICATE_BORDER_FILL_ID: ErrorCode = ErrorCode::new(11032);
+    /// Two or more `<hh:style>` entries share the same `id`.
+    pub const INTEGRITY_DUPLICATE_STYLE_ID: ErrorCode = ErrorCode::new(11033);
+    /// Two or more `<hh:fontface><hh:font>` entries share the same `id`
+    /// within a single language block.
+    pub const INTEGRITY_DUPLICATE_FACE_NAME_ID: ErrorCode = ErrorCode::new(11034);
+    /// Two or more `<hh:numbering>` entries share the same `id`.
+    pub const INTEGRITY_DUPLICATE_NUMBERING_ID: ErrorCode = ErrorCode::new(11035);
+    /// Two or more `<hh:bullet>` entries share the same `id`.
+    pub const INTEGRITY_DUPLICATE_BULLET_ID: ErrorCode = ErrorCode::new(11036);
+
+    // ─── Further cross-reference checks (11040-11049) ─────────────────
+    // Extending the IDRef story beyond charPr / paraPr / style.
+
+    /// `<hh:charPr>` has a `<hh:fontRef hangul="N">` whose `N` doesn't
+    /// match any `<hh:font id="N">` in the Hangul fontface block (or the
+    /// language-specific block corresponding to the attribute). Emitted
+    /// per language variant.
+    pub const INTEGRITY_ORPHAN_FONT_REF: ErrorCode = ErrorCode::new(11040);
+    /// `<hh:paraPr>` has a `borderFillIDRef="N"` whose `N` doesn't match
+    /// any `<hh:borderFill id="N">` in the header.
+    pub const INTEGRITY_ORPHAN_BORDER_FILL_IDREF: ErrorCode = ErrorCode::new(11041);
+    /// `<hh:charPr>` has a `borderFillIDRef="N"` whose `N` doesn't match
+    /// any `<hh:borderFill id="N">` in the header.
+    pub const INTEGRITY_ORPHAN_CHAR_BORDER_FILL_IDREF: ErrorCode = ErrorCode::new(11042);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
