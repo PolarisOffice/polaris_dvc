@@ -333,6 +333,123 @@
         color: var(--muted);
         font-size: 14px;
       }
+      /* ── File explorer panel ─────────────────────────────────────── */
+      .explorer {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 12px;
+        min-height: 360px;
+      }
+      @media (max-width: 900px) {
+        .explorer {
+          grid-template-columns: 1fr;
+        }
+      }
+      .tree {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel);
+        overflow: auto;
+        max-height: 520px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12.5px;
+        padding: 4px 0;
+      }
+      .tree-node {
+        padding: 2px 8px;
+        cursor: pointer;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .tree-node:hover {
+        background: var(--code-bg);
+      }
+      .tree-node.selected {
+        background: var(--accent);
+        color: #fff;
+      }
+      .tree-node.selected .tree-meta {
+        color: #dbeafe;
+      }
+      .tree-node.dir {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .tree-node .tree-icon {
+        opacity: 0.7;
+        width: 14px;
+      }
+      .tree-node .tree-meta {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--muted);
+        padding-left: 8px;
+      }
+      .viewer {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--panel);
+        overflow: auto;
+        max-height: 520px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12.5px;
+      }
+      .viewer-header {
+        padding: 8px 12px;
+        background: var(--code-bg);
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .viewer-content {
+        padding: 0;
+        margin: 0;
+      }
+      .viewer-content .line {
+        display: flex;
+        padding: 0 8px;
+      }
+      .viewer-content .line.highlight {
+        background: #fef3c7;
+      }
+      .viewer-content .ln {
+        width: 42px;
+        text-align: right;
+        padding-right: 12px;
+        color: var(--muted);
+        user-select: none;
+        flex-shrink: 0;
+        border-right: 1px solid var(--border);
+        margin-right: 8px;
+      }
+      .viewer-content .code {
+        white-space: pre;
+        flex: 1;
+        overflow: visible;
+      }
+      .viewer .empty {
+        padding: 24px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .viewer .binary {
+        padding: 24px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      /* Violation row click affordance */
+      table.violations tr.has-location {
+        cursor: pointer;
+      }
+      table.violations tr.has-location:hover {
+        background: #eff6ff;
+      }
     </style>
   </head>
   <body>
@@ -432,8 +549,23 @@
         </div>
       </section>
 
+      <section class="panel" id="explorer-panel" style="grid-column: 1 / -1; display: none">
+        <h2>4. File explorer</h2>
+        <p style="font-size: 12px; color: var(--muted); margin: 0 0 12px">
+          ZIP 내부 구조. 왼쪽 트리에서 파일을 선택하면 오른쪽에서 열람할 수 있고, 아래 검증 결과에서 위반 항목을 클릭하면 해당 파일의 문제 위치로 이동한다.
+        </p>
+        <div class="explorer">
+          <div class="tree" id="tree">
+            <div class="empty">Load an HWPX file to see its structure.</div>
+          </div>
+          <div class="viewer" id="viewer">
+            <div class="empty">Click a file on the left to view its contents.</div>
+          </div>
+        </div>
+      </section>
+
       <section class="panel" style="grid-column: 1 / -1">
-        <h2>4. Results</h2>
+        <h2>5. Results</h2>
         <div class="toolbar" id="result-toolbar" style="display: none">
           <button id="download-json-btn">⬇ Download JSON</button>
           <button id="download-xml-btn">⬇ Download XML</button>

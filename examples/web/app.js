@@ -10,6 +10,8 @@ import init, {
   validate,
   validateXml,
   describeError,
+  listZipEntries,
+  readZipEntry,
 } from "../../crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -244,6 +246,7 @@ async function loadGoldenCase(name) {
     activeGolden = name;
     $("#diff-expected-btn").style.display = "";
     updateRunButton();
+    refreshFileExplorer();
     setStatus(`Golden case ${name} ready. Hit Validate.`, "ok");
   } catch (e) {
     setStatus(`Failed to load golden ${name}: ${e.message}`, "err");
@@ -307,6 +310,178 @@ async function handleDocFile(file) {
   activeGolden = null;
   $("#diff-expected-btn").style.display = "none";
   updateRunButton();
+  refreshFileExplorer();
+}
+
+// -------------------------------------------------------------------
+// File explorer (ZIP tree + content viewer)
+// -------------------------------------------------------------------
+//
+// Opens the `#explorer-panel` section whenever a new HWPX file is
+// available. Tree is built from `listZipEntries` (pure-Rust helper
+// exposed via WASM); clicking a file calls `readZipEntry` on demand
+// so we never stash extra copies in JS memory. Violation rows that
+// carry a `FileLabel` + `ByteOffset` pair (schema/integrity) get a
+// click handler that jumps here and highlights the relevant line.
+let treeEntries = [];
+let selectedTreePath = null;
+
+function refreshFileExplorer() {
+  if (!hwpxBytes) return;
+  const panel = $("#explorer-panel");
+  panel.style.display = "";
+  try {
+    treeEntries = listZipEntries(hwpxBytes);
+  } catch (e) {
+    treeEntries = [];
+    $("#tree").innerHTML =
+      `<div class="empty">Not a valid ZIP: ${escapeHtml(e.message)}</div>`;
+    $("#viewer").innerHTML =
+      `<div class="empty">File is not a ZIP container.</div>`;
+    return;
+  }
+  renderFileTree(treeEntries);
+  $("#viewer").innerHTML =
+    `<div class="empty">Click a file on the left to view its contents.</div>`;
+  selectedTreePath = null;
+}
+
+// Build a nested tree view from the flat path list. Directory
+// markers (paths ending in `/`) are skipped — we synthesize folders
+// from the path components, which matches what most ZIP tools do.
+function renderFileTree(entries) {
+  const tree = $("#tree");
+  if (!entries.length) {
+    tree.innerHTML = `<div class="empty">No entries.</div>`;
+    return;
+  }
+  const root = { dirs: new Map(), files: [] };
+  for (const e of entries) {
+    if (e.isDirectory) continue;
+    const parts = e.path.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const p = parts[i];
+      if (!node.dirs.has(p))
+        node.dirs.set(p, { dirs: new Map(), files: [] });
+      node = node.dirs.get(p);
+    }
+    node.files.push({
+      name: parts[parts.length - 1],
+      path: e.path,
+      size: e.size,
+      compression: e.compression,
+    });
+  }
+  const html = [];
+  function walk(node, depth) {
+    for (const [name, sub] of node.dirs) {
+      const pad = 8 + depth * 14;
+      html.push(
+        `<div class="tree-node dir" style="padding-left:${pad}px">` +
+          `<span class="tree-icon">📂</span>${escapeHtml(name)}/</div>`,
+      );
+      walk(sub, depth + 1);
+    }
+    for (const f of node.files) {
+      const pad = 8 + depth * 14;
+      const comp = f.compression === "stored" ? "" : ` · ${f.compression}`;
+      html.push(
+        `<div class="tree-node file" data-path="${escapeHtml(f.path)}" style="padding-left:${pad}px">` +
+          `<span class="tree-icon">📄</span>${escapeHtml(f.name)}` +
+          `<span class="tree-meta">${humanBytes(f.size)}${comp}</span></div>`,
+      );
+    }
+  }
+  walk(root, 0);
+  tree.innerHTML = html.join("");
+  tree.querySelectorAll(".tree-node.file").forEach((el) => {
+    el.addEventListener("click", () => openFileInViewer(el.dataset.path));
+  });
+}
+
+// Render one ZIP entry's contents in the right-hand pane. If
+// `highlightOffset` is set (non-null), compute the matching line
+// and scroll there with a highlight.
+function openFileInViewer(path, highlightOffset = null) {
+  if (!hwpxBytes) return;
+  selectedTreePath = path;
+  $("#tree")
+    .querySelectorAll(".tree-node.file")
+    .forEach((el) => {
+      el.classList.toggle("selected", el.dataset.path === path);
+    });
+  const viewer = $("#viewer");
+  let bytes;
+  try {
+    bytes = readZipEntry(hwpxBytes, path);
+  } catch (e) {
+    viewer.innerHTML =
+      `<div class="viewer-header">${escapeHtml(path)}</div>` +
+      `<div class="empty">Read failed: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  // UTF-8 decode and sniff for binary content (presence of C0 control
+  // bytes other than tab/newline/CR in the first 512 bytes).
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  const looksBinary = /[\x00-\x08\x0E-\x1F]/.test(text.slice(0, 512));
+  if (looksBinary) {
+    viewer.innerHTML =
+      `<div class="viewer-header">${escapeHtml(path)} — ${humanBytes(bytes.length)} (binary)</div>` +
+      `<div class="binary">Binary data. Click-to-view not supported for this entry.</div>`;
+    return;
+  }
+  // Map byte offset → 1-based line number by counting LFs before it.
+  let targetLine = null;
+  if (
+    highlightOffset != null &&
+    Number.isFinite(highlightOffset) &&
+    highlightOffset > 0 &&
+    highlightOffset < bytes.length
+  ) {
+    targetLine = 1;
+    for (let i = 0; i < highlightOffset; i++) {
+      if (bytes[i] === 0x0a) targetLine++;
+    }
+  }
+  const lines = text.split("\n");
+  const rendered = lines
+    .map((l, idx) => {
+      const ln = idx + 1;
+      const cls = targetLine === ln ? "line highlight" : "line";
+      // Preserve non-empty lines; render a non-breaking space for empty
+      // ones so the row still has height.
+      const body = l.length ? escapeHtml(l) : "&nbsp;";
+      return `<div class="${cls}" data-line="${ln}"><span class="ln">${ln}</span><span class="code">${body}</span></div>`;
+    })
+    .join("");
+  const lineInfo = targetLine ? ` — line ${targetLine}` : "";
+  viewer.innerHTML =
+    `<div class="viewer-header">${escapeHtml(path)} · ${humanBytes(bytes.length)}${lineInfo}</div>` +
+    `<div class="viewer-content">${rendered}</div>`;
+  if (targetLine) {
+    const el = viewer.querySelector(`.line[data-line="${targetLine}"]`);
+    if (el) el.scrollIntoView({ block: "center" });
+  }
+}
+
+// Map a violation's `FileLabel` ("header.xml", "section0",
+// "content.hpf", …) to the actual ZIP path. Returns null if no match
+// — caller should fall back to doing nothing.
+function fileLabelToZipPath(label) {
+  if (!label) return null;
+  const known = {
+    "header.xml": "Contents/header.xml",
+    "content.hpf": "Contents/content.hpf",
+    "settings.xml": "Contents/settings.xml",
+    "version.xml": "Contents/version.xml",
+  };
+  if (known[label]) return known[label];
+  const secMatch = /^section(\d+)$/.exec(label);
+  if (secMatch) return `Contents/section${secMatch[1]}.xml`;
+  // Not a known label — try raw path match.
+  if (treeEntries.some((e) => e.path === label)) return label;
+  return null;
 }
 
 // -------------------------------------------------------------------
@@ -437,20 +612,32 @@ function renderJsonResults(list, opts, ms) {
       ]
         .filter(Boolean)
         .join(", ");
-      // Human-readable description via WASM `describeError` (mirrors
-      // the core `ErrorCode::text()` so web UI never drifts from CLI).
-      // `errorText` is the document text at the violation site per
-      // upstream DVC; render it as a quieter secondary line below the
-      // description when present.
-      const desc = escapeHtml(describeError(v.ErrorCode));
+      // Preferred description source hierarchy:
+      //   1. `ErrorString` — specific message from integrity / schema /
+      //      container checkers (e.g., "<p> can only contain <run>,
+      //      <ctrl>, … but found <charPr>"). Present only for JID
+      //      11000+ since DVC-compat categories omit it.
+      //   2. `describeError(ErrorCode)` — generic fallback that mirrors
+      //      `ErrorCode::text()` from the core crate.
+      const desc = v.ErrorString
+        ? escapeHtml(v.ErrorString)
+        : escapeHtml(describeError(v.ErrorCode));
       const docText = v.errorText
         ? `<div class="doc-text">“${escapeHtml(v.errorText)}”</div>`
         : "";
+      // Click-to-locate: rows that carry a file hint become clickable.
+      const zipPath = fileLabelToZipPath(v.FileLabel);
+      const locAttrs = zipPath
+        ? ` class="has-location" data-zip-path="${escapeHtml(zipPath)}" data-byte-offset="${v.ByteOffset ?? 0}" title="Click to open ${escapeHtml(zipPath)} at this position"`
+        : "";
+      const locCell = zipPath
+        ? `<div class="loc">${loc}</div><div class="loc" style="color:var(--accent)">📍 ${escapeHtml(v.FileLabel)}</div>`
+        : `<div class="loc">${loc}</div>`;
       return `
-        <tr data-axis="${axis}">
+        <tr data-axis="${axis}"${locAttrs}>
           <td><span class="axis-badge ${axis}">${axisLabel}</span></td>
           <td class="error-code">${v.ErrorCode}</td>
-          <td class="loc">${loc}</td>
+          <td>${locCell}</td>
           <td class="loc">char=${v.CharIDRef ?? "?"} para=${v.ParaPrIDRef ?? "?"}</td>
           <td>${table}</td>
           <td>
@@ -510,6 +697,19 @@ function renderJsonResults(list, opts, ms) {
     chip.addEventListener("click", () => {
       chip.classList.toggle("active");
       refreshFilter();
+    });
+  });
+
+  // Click-to-locate: clicking a violation row with a known file hint
+  // jumps to the explorer and scrolls to the offending line.
+  container.querySelectorAll("tr.has-location").forEach((tr) => {
+    tr.addEventListener("click", () => {
+      const path = tr.dataset.zipPath;
+      const off = Number(tr.dataset.byteOffset) || 0;
+      if (!path) return;
+      openFileInViewer(path, off);
+      const panel = $("#explorer-panel");
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 }
