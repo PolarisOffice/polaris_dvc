@@ -1007,13 +1007,25 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
         attributes: &[],
         text_allowed: false,
     }),
+    // `<opf:item>` attributes: the OPF 2.0 standard set plus Hancom
+    // extensions that appear in every real HWPX `content.hpf`:
+    //   - `isEmbedded` flags items stored inline in the ZIP (images,
+    //     fonts) vs. external references.
+    //   - `fallback` / `fallback-style` / `required-namespace` /
+    //     `required-modules` are from OPF 2.0 §2.3 — rare in HWPX
+    //     today but legal.
     ("item", ElementDecl {
         name: "item",
         children: &[],
         attributes: &[
-            AttributeDecl { name: "id",    ty: SimpleType::String, required: true },
-            AttributeDecl { name: "href",  ty: SimpleType::String, required: true },
-            AttributeDecl { name: "media-type", ty: SimpleType::String, required: false },
+            AttributeDecl { name: "id",                 ty: SimpleType::String, required: true },
+            AttributeDecl { name: "href",               ty: SimpleType::String, required: true },
+            AttributeDecl { name: "media-type",         ty: SimpleType::String, required: false },
+            AttributeDecl { name: "isEmbedded",         ty: SimpleType::String, required: false },
+            AttributeDecl { name: "fallback",           ty: SimpleType::String, required: false },
+            AttributeDecl { name: "fallback-style",     ty: SimpleType::String, required: false },
+            AttributeDecl { name: "required-namespace", ty: SimpleType::String, required: false },
+            AttributeDecl { name: "required-modules",   ty: SimpleType::String, required: false },
         ],
         text_allowed: false,
     }),
