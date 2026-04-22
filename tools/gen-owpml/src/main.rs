@@ -348,15 +348,22 @@ fn parse_complex_type(ct: Node, reg: &mut SchemaRegistry) -> ComplexTypeBody {
     for c in ct.children().filter(Node::is_element) {
         match local_name(c) {
             "sequence" | "all" => {
-                collect_children(c, &mut body.children, reg, false);
+                let outer_max = parse_max_occurs(attr(c, "maxOccurs"));
+                collect_children(c, &mut body.children, reg, false, outer_max);
             }
             "choice" => {
                 // xs:choice = "one of these"; we don't model ordering,
                 // so the correct conservative flattening is to make
                 // every branch optional (min=0). The containing
                 // sequence's own min/max already decides whether any
-                // choice branch is required at all.
-                collect_children(c, &mut body.children, reg, true);
+                // choice branch is required at all. We also propagate
+                // the choice's own maxOccurs down: `<choice
+                // maxOccurs="unbounded">` with inner `maxOccurs="1"`
+                // elements lets each element appear many times in
+                // total, which is what matters for our order-free
+                // cardinality tracking.
+                let outer_max = parse_max_occurs(attr(c, "maxOccurs"));
+                collect_children(c, &mut body.children, reg, true, outer_max);
             }
             "attribute" => {
                 if let Some(a) = parse_attribute(c, reg) {
@@ -404,10 +411,24 @@ fn parse_complex_type(ct: Node, reg: &mut SchemaRegistry) -> ComplexTypeBody {
                         for ccc in cc.children().filter(Node::is_element) {
                             match local_name(ccc) {
                                 "sequence" | "all" => {
-                                    collect_children(ccc, &mut body.children, reg, false);
+                                    let outer_max = parse_max_occurs(attr(ccc, "maxOccurs"));
+                                    collect_children(
+                                        ccc,
+                                        &mut body.children,
+                                        reg,
+                                        false,
+                                        outer_max,
+                                    );
                                 }
                                 "choice" => {
-                                    collect_children(ccc, &mut body.children, reg, true);
+                                    let outer_max = parse_max_occurs(attr(ccc, "maxOccurs"));
+                                    collect_children(
+                                        ccc,
+                                        &mut body.children,
+                                        reg,
+                                        true,
+                                        outer_max,
+                                    );
                                 }
                                 "attribute" => {
                                     if let Some(a) = parse_attribute(ccc, reg) {
@@ -436,11 +457,25 @@ fn parse_complex_type(ct: Node, reg: &mut SchemaRegistry) -> ComplexTypeBody {
     body
 }
 
+/// Combine a child's own `maxOccurs` with its enclosing group's
+/// `maxOccurs`. XSD allows a `<xs:choice maxOccurs="unbounded">`
+/// around an `<xs:element maxOccurs="1">`; in total the element can
+/// still appear unbounded times because the outer group repeats.
+/// Our validator doesn't track ordering, so the effective bound is
+/// the product (with `None` = unbounded absorbing).
+fn combine_max(child: Option<u32>, outer: Option<u32>) -> Option<u32> {
+    match (child, outer) {
+        (None, _) | (_, None) => None,
+        (Some(c), Some(o)) => Some(c.saturating_mul(o)),
+    }
+}
+
 fn collect_children(
     seq: Node,
     out: &mut Vec<ChildDecl>,
     reg: &mut SchemaRegistry,
     inside_choice: bool,
+    outer_max: Option<u32>,
 ) {
     for c in seq.children().filter(Node::is_element) {
         match local_name(c) {
@@ -476,12 +511,13 @@ fn collect_children(
                     // optional — exactly one satisfies the choice,
                     // which we can't express per-child. Force min=0.
                     let min_occurs = if inside_choice { 0 } else { raw_min };
+                    let child_max = parse_max_occurs(attr(c, "maxOccurs"));
                     out.push(ChildDecl {
                         name: name.to_string(),
                         type_ref: final_type_ref,
                         inline_type_key: None,
                         min_occurs,
-                        max_occurs: parse_max_occurs(attr(c,"maxOccurs")),
+                        max_occurs: combine_max(child_max, outer_max),
                     });
                 } else if let Some(r) = attr(c,"ref") {
                     // Ref to another element — key by local name. We
@@ -489,18 +525,38 @@ fn collect_children(
                     // local name with unknown cardinality semantics.
                     let raw_min = parse_occurs(attr(c,"minOccurs"), 1);
                     let min_occurs = if inside_choice { 0 } else { raw_min };
+                    let child_max = parse_max_occurs(attr(c, "maxOccurs"));
                     out.push(ChildDecl {
                         name: strip_prefix(r).to_string(),
                         type_ref: None,
                         inline_type_key: None,
                         min_occurs,
-                        max_occurs: parse_max_occurs(attr(c,"maxOccurs")),
+                        max_occurs: combine_max(child_max, outer_max),
                     });
                 }
             }
-            // Nested group modifiers — flatten.
-            "sequence" | "all" => collect_children(c, out, reg, inside_choice),
-            "choice" => collect_children(c, out, reg, true),
+            // Nested group modifiers — flatten. The inner group's own
+            // maxOccurs multiplies on top of our outer_max.
+            "sequence" | "all" => {
+                let inner_max = parse_max_occurs(attr(c, "maxOccurs"));
+                collect_children(
+                    c,
+                    out,
+                    reg,
+                    inside_choice,
+                    combine_max(inner_max, outer_max),
+                );
+            }
+            "choice" => {
+                let inner_max = parse_max_occurs(attr(c, "maxOccurs"));
+                collect_children(
+                    c,
+                    out,
+                    reg,
+                    true,
+                    combine_max(inner_max, outer_max),
+                );
+            }
             _ => {}
         }
     }
@@ -631,6 +687,33 @@ enum FlatType {
     Unknown,
 }
 
+/// Case-sensitive first, then case-insensitive fallback on the same
+/// name. KS X 6101 has exactly one known typo — `FillBrushType` is
+/// defined capitalized but every reference uses `fillBrushType` (lower
+/// `f`). A strict XSD processor would reject the standard outright;
+/// we fold the two names together so the generated model actually
+/// matches the type where it's used. If the fallback hits, we return
+/// the canonical (defined) key so downstream bookkeeping lines up.
+fn canonical_type_key(raw: &str, reg: &SchemaRegistry) -> String {
+    if raw.is_empty() || raw.starts_with("__inline_") || raw.starts_with("__open_") {
+        return raw.to_string();
+    }
+    if reg.complex_types.contains_key(raw) || reg.simple_types.contains_key(raw) {
+        return raw.to_string();
+    }
+    for k in reg.complex_types.keys() {
+        if k.eq_ignore_ascii_case(raw) {
+            return k.clone();
+        }
+    }
+    for k in reg.simple_types.keys() {
+        if k.eq_ignore_ascii_case(raw) {
+            return k.clone();
+        }
+    }
+    raw.to_string()
+}
+
 /// Flatten a complex-type body to its direct (children, attributes,
 /// text) by chasing extensions + attribute groups. `visited` guards
 /// against circular inheritance (shouldn't happen in OWPML but cheap
@@ -640,10 +723,11 @@ fn flatten_complex(
     reg: &SchemaRegistry,
     visited: &mut BTreeSet<String>,
 ) -> ComplexTypeBody {
-    if !visited.insert(key.to_string()) {
+    let canonical = canonical_type_key(key, reg);
+    if !visited.insert(canonical.clone()) {
         return ComplexTypeBody::default();
     }
-    let Some(ct) = reg.complex_types.get(key) else {
+    let Some(ct) = reg.complex_types.get(&canonical) else {
         return ComplexTypeBody::default();
     };
     let mut merged = ct.clone();
@@ -752,7 +836,10 @@ fn build_flat_model(
     root_local_name: &str,
     reg: &SchemaRegistry,
 ) -> Option<(String, String, BTreeMap<String, FlatElement>)> {
-    let root_type_key = reg.top_elements.get(root_local_name)?.clone();
+    let root_type_key = canonical_type_key(
+        &reg.top_elements.get(root_local_name)?.clone(),
+        reg,
+    );
     let mut out: BTreeMap<String, FlatElement> = BTreeMap::new();
     // Work queue: (type_key_to_flatten, element_local_name_for_name_field)
     let mut queue: Vec<(String, String)> =
@@ -769,11 +856,12 @@ fn build_flat_model(
             .children
             .iter()
             .map(|c| {
-                let type_ref = c
+                let raw_type = c
                     .type_ref
                     .clone()
                     .or_else(|| c.inline_type_key.clone())
-                    .unwrap_or_default(); // empty string = "unknown type"
+                    .unwrap_or_default();
+                let type_ref = canonical_type_key(&raw_type, reg);
                 (c.name.clone(), type_ref, c.min_occurs, c.max_occurs)
             })
             .collect();
@@ -802,12 +890,13 @@ fn build_flat_model(
         // referenced multiple times from different parents is fine —
         // the `seen` guard collapses the repeat visits.
         for c in &body.children {
-            let child_type = c
+            let raw_type = c
                 .type_ref
                 .clone()
                 .or_else(|| c.inline_type_key.clone())
                 .unwrap_or_default();
-            if !child_type.is_empty() {
+            if !raw_type.is_empty() {
+                let child_type = canonical_type_key(&raw_type, reg);
                 queue.push((child_type, c.name.clone()));
             }
         }
