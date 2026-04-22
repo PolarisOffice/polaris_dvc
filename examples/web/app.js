@@ -580,6 +580,89 @@ function openFileInViewer(path, highlightOffset = null) {
   if (targetLine) {
     const el = viewer.querySelector(`.line[data-line="${targetLine}"]`);
     if (el) el.scrollIntoView({ block: "center" });
+    // In addition to the line-highlight, select the actual offending
+    // element text natively — like the user dragged over it with the
+    // mouse. Helps pinpoint *which* tag on a line with several.
+    if (highlightOffset != null) {
+      selectOffendingRange(viewer, bytes, text, highlightOffset);
+    }
+  }
+}
+
+// Given the offending byte position (quick-xml reports the offset
+// AFTER the closing `>` of the tag that triggered the finding), build
+// a native browser text selection from the most recent `<` up to that
+// offset — so the user sees the full open tag highlighted, copyable
+// into the clipboard. Byte→char→(line,col)→DOM conversion accounts
+// for multi-byte UTF-8 and for HTML entities expanding to single
+// characters in the rendered text nodes.
+function selectOffendingRange(viewerEl, bytes, text, endByte) {
+  // 1. Scan backwards for the nearest `<`.
+  let startByte = -1;
+  for (let i = Math.min(endByte, bytes.length) - 1; i >= 0; i--) {
+    if (bytes[i] === 0x3c /* '<' */) {
+      startByte = i;
+      break;
+    }
+  }
+  if (startByte < 0) return;
+  const clampedEnd = Math.min(endByte, bytes.length);
+
+  // 2. Byte offset → character offset (length in JS string).
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const startChar = decoder.decode(bytes.slice(0, startByte)).length;
+  const endChar = decoder.decode(bytes.slice(0, clampedEnd)).length;
+
+  // 3. Char offset → (lineIdx, col) in the decoded source.
+  const srcLines = text.split("\n");
+  function posOf(charIdx) {
+    let c = charIdx;
+    for (let i = 0; i < srcLines.length; i++) {
+      if (c <= srcLines[i].length) return { line: i, col: c };
+      c -= srcLines[i].length + 1; // +1 for the `\n`
+    }
+    const last = srcLines.length - 1;
+    return { line: last, col: srcLines[last].length };
+  }
+  const a = posOf(startChar);
+  const b = posOf(endChar);
+
+  // 4. (line,col) → DOM (text node, offset). Walk only the `.code`
+  //    span inside the right line div so the gutter's line-number
+  //    text nodes don't pollute the count.
+  function findDom(line, col) {
+    const codeEl = viewerEl.querySelector(
+      `.line[data-line="${line + 1}"] .code`,
+    );
+    if (!codeEl) return null;
+    let remaining = col;
+    const walker = document.createTreeWalker(codeEl, NodeFilter.SHOW_TEXT);
+    let last = null;
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      last = node;
+      if (remaining <= node.data.length) return { node, offset: remaining };
+      remaining -= node.data.length;
+    }
+    return last ? { node: last, offset: last.data.length } : null;
+  }
+  const startPos = findDom(a.line, a.col);
+  const endPos = findDom(b.line, b.col);
+  if (!startPos || !endPos) return;
+
+  // 5. Build the Range + apply selection.
+  try {
+    const range = document.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  } catch (_e) {
+    // DOM positions can occasionally fall out of sync if the viewer
+    // was torn down mid-call; selection is a nicety, not critical.
   }
 }
 

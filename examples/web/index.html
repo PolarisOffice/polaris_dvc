@@ -424,6 +424,13 @@
       .viewer-content .line.highlight {
         background: #fef3c7;
       }
+      /* When we programmatically select the offending tag on
+         click-to-locate, use a saturated blue so it reads clearly
+         against the amber line-highlight background. */
+      .viewer-content ::selection {
+        background: #3b82f6;
+        color: #fff;
+      }
       .viewer-content .ln {
         width: 42px;
         text-align: right;
