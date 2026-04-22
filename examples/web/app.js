@@ -583,8 +583,17 @@ function openFileInViewer(path, highlightOffset = null) {
     // In addition to the line-highlight, select the actual offending
     // element text natively — like the user dragged over it with the
     // mouse. Helps pinpoint *which* tag on a line with several.
+    //
+    // Defer to rAF: any scroll issued by the click handler (panel
+    // scrollIntoView, or the `el.scrollIntoView` above) can land in
+    // the same frame and clobber a same-tick selection. Running on
+    // the next animation frame ensures layout has settled, the
+    // scroll is committed, and our Range resolves against the final
+    // DOM positions.
     if (highlightOffset != null) {
-      selectOffendingRange(viewer, bytes, text, highlightOffset);
+      requestAnimationFrame(() => {
+        selectOffendingRange(viewer, bytes, text, highlightOffset);
+      });
     }
   }
 }
@@ -902,15 +911,19 @@ function renderJsonResults(list, opts, ms) {
   });
 
   // Click-to-locate: clicking a violation row with a known file hint
-  // jumps to the explorer and scrolls to the offending line.
+  // jumps to the explorer, opens the file, and native-selects the
+  // offending range. Order matters: scroll the panel instantly FIRST
+  // (smooth animation + programmatic selection race each other; one
+  // will clobber the other), then open the file. The selection is
+  // set inside `openFileInViewer` after its own layout settles.
   container.querySelectorAll("tr.has-location").forEach((tr) => {
     tr.addEventListener("click", () => {
       const path = tr.dataset.zipPath;
       const off = Number(tr.dataset.byteOffset) || 0;
       if (!path) return;
-      openFileInViewer(path, off);
       const panel = $("#explorer-panel");
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      panel.scrollIntoView({ block: "start" });
+      openFileInViewer(path, off);
     });
   });
 }
