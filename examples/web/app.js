@@ -328,8 +328,6 @@ let selectedTreePath = null;
 
 function refreshFileExplorer() {
   if (!hwpxBytes) return;
-  const panel = $("#explorer-panel");
-  panel.style.display = "";
   try {
     treeEntries = listZipEntries(hwpxBytes);
   } catch (e) {
