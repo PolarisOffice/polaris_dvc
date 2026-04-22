@@ -94,22 +94,44 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                 let local_owned = strip_prefix(e.name().as_ref()).to_vec();
                 let local: &[u8] = &local_owned;
 
+                // Context-sensitive decl lookup:
+                //   - Inside a frame → consult parent's children list to
+                //     find the matching (name, type_ref) entry. The
+                //     type_ref drives the subsequent element_map lookup,
+                //     so `<offset>` under `<borderFill>` resolves to the
+                //     {left,right,top,bottom} decl, while `<offset>`
+                //     under a shape resolves to the {x,y} decl.
+                //   - At the top of the document → fall back to the
+                //     model's `root_type`.
+                //   - Under the unknown placeholder → every child is
+                //     unknown too (no cascade noise).
+                let type_ref: Option<&'static str> = if let Some(parent) = stack.last() {
+                    if std::ptr::eq(parent.decl, &UNKNOWN_ELEMENT) {
+                        None
+                    } else {
+                        parent
+                            .decl
+                            .children
+                            .iter()
+                            .find(|(name, _, _, _)| name.as_bytes() == local)
+                            .map(|(_, ty, _, _)| *ty)
+                    }
+                } else if local == model.root_name.as_bytes() {
+                    Some(model.root_type)
+                } else {
+                    None
+                };
+
                 // If we're inside a frame, check this is a permitted child.
                 // Skip the check entirely when the parent is the unknown-
-                // placeholder: if we couldn't resolve the parent's schema,
-                // any "unexpected child" report would just be cascade noise
-                // pointing at a ghost "<__unknown__>" element. Ancestors
-                // already reported the unknown parent; that's enough.
+                // placeholder.
                 if let Some(parent) = stack.last_mut() {
-                    if std::ptr::eq(parent.decl, &UNKNOWN_ELEMENT) {
-                        // fall through to the declaration lookup below,
-                        // skipping allowed-child/maxOccurs checks.
-                    } else {
+                    if !std::ptr::eq(parent.decl, &UNKNOWN_ELEMENT) {
                         let allowed = parent
                             .decl
                             .children
                             .iter()
-                            .any(|(name, _, _)| name.as_bytes() == local);
+                            .any(|(name, _, _, _)| name.as_bytes() == local);
                         if !allowed {
                             let child_name = String::from_utf8_lossy(local).into_owned();
                             // Build the "only these are allowed" hint. We cap
@@ -141,7 +163,7 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                                 .decl
                                 .children
                                 .iter()
-                                .find_map(|(name, _, _)| {
+                                .find_map(|(name, _, _, _)| {
                                     if name.as_bytes() == local {
                                         Some(*name)
                                     } else {
@@ -155,8 +177,8 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                                 .decl
                                 .children
                                 .iter()
-                                .find(|(name, _, _)| *name == key)
-                                .map(|(_, _, max)| *max)
+                                .find(|(name, _, _, _)| *name == key)
+                                .map(|(_, _, _, max)| *max)
                                 .unwrap_or(Some(1));
                             if let Some(max_v) = max {
                                 if *count > max_v {
@@ -173,13 +195,16 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                                 }
                             }
                         }
-                    } // end "parent != UNKNOWN_ELEMENT" branch
+                    }
                 }
 
-                // Look up the declaration for this element (so we can
-                // check its own attrs and push a frame for its body).
-                let local_str = std::str::from_utf8(local).unwrap_or("?");
-                let decl = element_map.get(local_str).copied();
+                // Resolve decl via type_ref (context-sensitive). A
+                // non-empty type_ref that doesn't resolve (shouldn't
+                // happen in generated schemas) falls through to the
+                // unknown-placeholder path.
+                let decl: Option<&ElementDecl> = type_ref
+                    .filter(|t| !t.is_empty())
+                    .and_then(|t| element_map.get(t).copied());
 
                 if let Some(decl) = decl {
                     // Attribute checks.
@@ -274,7 +299,7 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                         continue;
                     }
                     // minOccurs check: any child with min > seen count.
-                    for (name, min, _) in frame.decl.children {
+                    for (name, _, min, _) in frame.decl.children {
                         if *min == 0 {
                             continue;
                         }
@@ -326,12 +351,12 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
 /// these are allowed" fragment — `<a>, <b>, <c>` etc., capped at a
 /// sensible length so elements with dozens of valid children
 /// (e.g. `<run>`) produce readable messages.
-fn format_allowed_children(children: &[(&'static str, u32, Option<u32>)]) -> String {
+fn format_allowed_children(children: &[(&'static str, &'static str, u32, Option<u32>)]) -> String {
     const MAX_SHOWN: usize = 8;
     let total = children.len();
     let shown = total.min(MAX_SHOWN);
     let mut out = String::new();
-    for (i, (name, _, _)) in children.iter().take(shown).enumerate() {
+    for (i, (name, _, _, _)) in children.iter().take(shown).enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
@@ -459,6 +484,7 @@ mod tests {
         )];
         let _model = SchemaModel {
             root_name: "root",
+            root_type: "root",
             elements: ELEMS,
         };
         // Directly test check_simple_type — validator integration is

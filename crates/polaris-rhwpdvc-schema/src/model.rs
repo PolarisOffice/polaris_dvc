@@ -93,31 +93,50 @@ pub struct AttributeDecl {
     pub required: bool,
 }
 
-/// One element declaration. Maps to `<xs:element name="…"
-/// type="ComplexType">` after flattening. `children` holds the local
-/// names the element is allowed to contain (with cardinality);
-/// `attributes` holds the declared attrs; `text_allowed` reflects
-/// whether the complex type has `mixed="true"` or is simple-content.
+/// One element declaration. Maps to one `<xs:complexType>` (named or
+/// inline). `children` holds the allowed child elements, each paired
+/// with the `type_ref` the child's own declaration is stored under.
+/// That type_ref is what gives us **context-sensitive** validation:
+/// when the same local name is declared differently in different
+/// parents (e.g. `<offset>` has `{left,right,top,bottom}` under
+/// `<borderFill>` but `{x,y}` under a shape), the child list of each
+/// parent carries the type_ref pointing to the right declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElementDecl {
+    /// Local name this element appears as in XML. Purely diagnostic —
+    /// does NOT drive lookup; `type_ref` does.
     pub name: &'static str,
-    /// Map of `local_name -> (min_occurs, max_occurs)`. `max = None`
-    /// represents `unbounded`. Child order is NOT validated — XSD's
-    /// `xs:choice`/`xs:sequence` distinction is collapsed.
-    pub children: &'static [(&'static str, u32, Option<u32>)],
+    /// Allowed children: `(local_name, type_ref, min_occurs,
+    /// max_occurs)`. `type_ref` is the key into
+    /// [`SchemaModel::elements`] for that child's declaration; an
+    /// empty string means "unknown type" (open to anything) and the
+    /// validator will treat the child as a placeholder frame without
+    /// pushing further constraints. Child **order** is not validated
+    /// — XSD `xs:choice`/`xs:sequence` distinctions are collapsed.
+    pub children: &'static [(&'static str, &'static str, u32, Option<u32>)],
     pub attributes: &'static [AttributeDecl],
     /// Whether the element may contain character data directly (mixed
     /// content or simple content).
     pub text_allowed: bool,
 }
 
-/// A bundle of element declarations keyed by local name, plus the root
-/// element name. One `SchemaModel` per [`OwpmlRoot`].
+/// A bundle of element declarations keyed by **type key** (named
+/// complexType name, or a synthetic `__inline_…` key for anonymous
+/// types). Each parent element's `children` list carries the type_ref
+/// to follow at lookup time; this is how we keep context-sensitive
+/// validation without giving up a flat lookup table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchemaModel {
+    /// XML local name of the document root (e.g. `"head"`, `"sec"`).
+    /// Used to shape diagnostic messages and to match the opening tag.
     pub root_name: &'static str,
-    /// Every element reachable from `root_name`, keyed by local name.
-    /// Flat map because XSD nested types are flattened during codegen.
+    /// Type key under which the root element's declaration is stored
+    /// in `elements`. Validator seeds the frame stack with this.
+    pub root_type: &'static str,
+    /// All element declarations reachable from the root, keyed by
+    /// type key. Multiple entries may share the same local `name`
+    /// when the XSD declares the same element name in different
+    /// contexts — that's exactly the property we keep.
     pub elements: &'static [(&'static str, ElementDecl)],
 }
 
@@ -129,14 +148,18 @@ impl SchemaModel {
         self.elements.iter().map(|(k, v)| (*k, v)).collect()
     }
 
-    pub fn lookup(&self, local_name: &str) -> Option<&ElementDecl> {
-        self.elements.iter().find_map(|(name, decl)| {
-            if *name == local_name {
-                Some(decl)
-            } else {
-                None
-            }
-        })
+    /// Fetch the root element's declaration.
+    pub fn root_decl(&self) -> Option<&ElementDecl> {
+        self.elements
+            .iter()
+            .find_map(|(k, v)| if *k == self.root_type { Some(v) } else { None })
+    }
+
+    /// Fetch an element declaration by type key.
+    pub fn lookup(&self, type_key: &str) -> Option<&ElementDecl> {
+        self.elements
+            .iter()
+            .find_map(|(k, v)| if *k == type_key { Some(v) } else { None })
     }
 }
 
@@ -192,20 +215,22 @@ mod tests {
             required: true,
         }];
         static ELEMENTS: &[(&str, ElementDecl)] = &[(
-            "charPr",
+            "CharShapeType",
             ElementDecl {
                 name: "charPr",
-                children: &[("fontRef", 1, Some(1))],
+                children: &[("fontRef", "FontRefType", 1, Some(1))],
                 attributes: ATTRS,
                 text_allowed: false,
             },
         )];
         let m = SchemaModel {
             root_name: "charPr",
+            root_type: "CharShapeType",
             elements: ELEMENTS,
         };
-        assert!(m.lookup("charPr").is_some());
-        assert_eq!(m.lookup("charPr").unwrap().attributes[0].name, "id");
+        assert!(m.lookup("CharShapeType").is_some());
+        assert_eq!(m.lookup("CharShapeType").unwrap().attributes[0].name, "id");
         assert!(m.lookup("nope").is_none());
+        assert_eq!(m.root_decl().unwrap().name, "charPr");
     }
 }

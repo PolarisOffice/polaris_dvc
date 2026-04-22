@@ -195,13 +195,62 @@ fn main() -> std::process::ExitCode {
     );
 
     let rust = emit_rust(&reg, &xsd_names);
-    fs::write(&out_path, rust).expect("write generated_owpml.rs");
+    // Pipe through rustfmt so the committed output is canonical-
+    // formatted — otherwise `cargo fmt --check` in CI fails on every
+    // regeneration. `rustfmt` ships with every stable toolchain; if
+    // the subprocess fails for any reason we fall back to the raw
+    // emission and log a warning so the developer can run `cargo
+    // fmt` manually.
+    let final_src = match rustfmt(&rust) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "gen-owpml: rustfmt failed ({e}); writing unformatted output. \
+                 Run `cargo fmt -p polaris-rhwpdvc-schema` after this.",
+            );
+            rust
+        }
+    };
+    fs::write(&out_path, final_src).expect("write generated_owpml.rs");
     eprintln!(
         "gen-owpml: wrote {} ({} bytes)",
         out_path.display(),
         fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0)
     );
     0.into()
+}
+
+/// Run `rustfmt --edition=2021` on a source string and return the
+/// formatted result. Shells out because `prettyplease` / `syn`
+/// don't handle all the syntactic forms we emit.
+fn rustfmt(src: &str) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("rustfmt")
+        .arg("--edition=2021")
+        .arg("--emit=stdout")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn rustfmt: {e}"))?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or_else(|| "rustfmt stdin unavailable".to_string())?
+        .write_all(src.as_bytes())
+        .map_err(|e| format!("write to rustfmt: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("wait rustfmt: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "rustfmt exit {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    String::from_utf8(out.stdout).map_err(|e| format!("rustfmt non-utf8 output: {e}"))
 }
 
 fn find_repo_root() -> Option<PathBuf> {
@@ -558,7 +607,7 @@ fn map_primitive(base: &str) -> Primitive {
 struct FlatElement {
     #[allow(dead_code)]
     name: String,
-    children: Vec<(String, u32, Option<u32>)>, // (local_name, min, max)
+    children: Vec<(String, String, u32, Option<u32>)>, // (local_name, type_ref, min, max)
     attributes: Vec<FlatAttr>,
     text_allowed: bool,
 }
@@ -675,34 +724,61 @@ fn primitive_to_flat(p: Primitive) -> FlatType {
     }
 }
 
-/// Build the complete FlatElement table reachable from a root
-/// element's type. Returns (root_local_name, element_map).
+/// Build the type-keyed FlatElement table reachable from a root type.
+/// Returns `(root_type_key, element_map)` where `element_map` is keyed
+/// by type key (named complexType or synthetic `__inline_…`).
+///
+/// ## Context-sensitive resolution
+///
+/// XSD lets the same local name be declared with different bodies in
+/// different parents. KS X 6101 hits this in several places — most
+/// notably `<offset>`, declared three times:
+///
+///   - under `<fontface>` with attrs `hangul`, `latin`, …
+///   - under `<borderFill>` with attrs `left`, `right`, `top`, `bottom`
+///   - under shape types with attrs `x`, `y`
+///
+/// Rather than collapse by local name (lossy) or merge the union
+/// (lossy in the other direction — masks cross-context contamination),
+/// we key on **type** and carry a `type_ref` alongside each child
+/// name. The validator consults the parent's children list to pick
+/// the correct decl for the child it's currently processing, so each
+/// `<offset>` context gets its own true allowed-attribute set.
+///
+/// Cycle guard: we visit each type_key exactly once. Multiple
+/// elements can share a type (OPF items all share `ItemType` etc.),
+/// and that's fine — we just don't re-flatten the body.
 fn build_flat_model(
     root_local_name: &str,
     reg: &SchemaRegistry,
-) -> Option<(String, BTreeMap<String, FlatElement>)> {
-    let type_key = reg.top_elements.get(root_local_name)?.clone();
+) -> Option<(String, String, BTreeMap<String, FlatElement>)> {
+    let root_type_key = reg.top_elements.get(root_local_name)?.clone();
     let mut out: BTreeMap<String, FlatElement> = BTreeMap::new();
-    let mut queue: Vec<(String, String)> = vec![(root_local_name.to_string(), type_key)];
-    let seen_types: BTreeSet<String> = BTreeSet::new();
-    let mut seen_elements: BTreeSet<String> = BTreeSet::new();
+    // Work queue: (type_key_to_flatten, element_local_name_for_name_field)
+    let mut queue: Vec<(String, String)> =
+        vec![(root_type_key.clone(), root_local_name.to_string())];
+    let mut seen: BTreeSet<String> = BTreeSet::new();
 
-    while let Some((elem_name, type_key)) = queue.pop() {
-        if !seen_elements.insert(elem_name.clone()) {
+    while let Some((type_key, elem_name)) = queue.pop() {
+        if !seen.insert(type_key.clone()) {
             continue;
         }
-        let mut visited = seen_types.clone();
-        let body = flatten_complex(&type_key, reg, &mut visited);
+        let body = flatten_complex(&type_key, reg, &mut BTreeSet::new());
 
-        // Flatten children into (name, min, max).
-        let children: Vec<(String, u32, Option<u32>)> = body
+        let new_children: Vec<(String, String, u32, Option<u32>)> = body
             .children
             .iter()
-            .map(|c| (c.name.clone(), c.min_occurs, c.max_occurs))
+            .map(|c| {
+                let type_ref = c
+                    .type_ref
+                    .clone()
+                    .or_else(|| c.inline_type_key.clone())
+                    .unwrap_or_default(); // empty string = "unknown type"
+                (c.name.clone(), type_ref, c.min_occurs, c.max_occurs)
+            })
             .collect();
 
-        // Flatten attributes with type resolution.
-        let attributes: Vec<FlatAttr> = body
+        let new_attrs: Vec<FlatAttr> = body
             .attributes
             .iter()
             .map(|a| FlatAttr {
@@ -713,40 +789,31 @@ fn build_flat_model(
             .collect();
 
         out.insert(
-            elem_name.clone(),
+            type_key.clone(),
             FlatElement {
-                name: elem_name.clone(),
-                children: children.clone(),
-                attributes,
+                name: elem_name,
+                children: new_children,
+                attributes: new_attrs,
                 text_allowed: body.text_allowed,
             },
         );
 
-        // Follow children into their own types for transitive reach.
+        // Enqueue each child's type for flattening. The same type
+        // referenced multiple times from different parents is fine —
+        // the `seen` guard collapses the repeat visits.
         for c in &body.children {
-            if seen_elements.contains(&c.name) {
-                continue;
+            let child_type = c
+                .type_ref
+                .clone()
+                .or_else(|| c.inline_type_key.clone())
+                .unwrap_or_default();
+            if !child_type.is_empty() {
+                queue.push((child_type, c.name.clone()));
             }
-            let ck = if let Some(t) = &c.type_ref {
-                t.clone()
-            } else if let Some(k) = &c.inline_type_key {
-                k.clone()
-            } else {
-                // Unknown-typed child — still register empty element.
-                out.entry(c.name.clone()).or_insert_with(|| FlatElement {
-                    name: c.name.clone(),
-                    children: vec![],
-                    attributes: vec![],
-                    text_allowed: true,
-                });
-                seen_elements.insert(c.name.clone());
-                continue;
-            };
-            queue.push((c.name.clone(), ck));
         }
     }
 
-    Some((root_local_name.to_string(), out))
+    Some((root_local_name.to_string(), root_type_key, out))
 }
 
 // ─── Emit (registry → generated_owpml.rs) ────────────────────────────
@@ -789,18 +856,25 @@ fn emit_rust(reg: &SchemaRegistry, xsd_names: &[String]) -> String {
 
     for (root_name, model_const, array_const) in roots {
         match build_flat_model(root_name, reg) {
-            Some((_, map)) if !map.is_empty() => {
-                s.push_str(&emit_model(root_name, model_const, array_const, &map));
+            Some((_, root_type, map)) if !map.is_empty() => {
+                s.push_str(&emit_model(
+                    root_name,
+                    &root_type,
+                    model_const,
+                    array_const,
+                    &map,
+                ));
             }
             _ => {
                 // Placeholder — root not found. Fall back to a minimal
                 // single-element model so downstream code still links.
+                let fallback_type = format!("__missing_{root_name}");
                 s.push_str(&format!(
                     "// root element {root_name:?} not found in source XSDs — empty placeholder.\n"
                 ));
                 s.push_str(&format!(
                     "static {array_const}: &[(&str, ElementDecl)] = &[(\n\
-                     \"{root_name}\",\n\
+                     \"{fallback_type}\",\n\
                      ElementDecl {{\n\
                      \tname: \"{root_name}\",\n\
                      \tchildren: &[],\n\
@@ -810,6 +884,7 @@ fn emit_rust(reg: &SchemaRegistry, xsd_names: &[String]) -> String {
                      )];\n\
                      pub static {model_const}: SchemaModel = SchemaModel {{\n\
                      \troot_name: \"{root_name}\",\n\
+                     \troot_type: \"{fallback_type}\",\n\
                      \telements: {array_const},\n\
                      }};\n\n",
                 ));
@@ -822,6 +897,7 @@ fn emit_rust(reg: &SchemaRegistry, xsd_names: &[String]) -> String {
 
 fn emit_model(
     root_name: &str,
+    root_type: &str,
     model_const: &str,
     array_const: &str,
     map: &BTreeMap<String, FlatElement>,
@@ -835,15 +911,16 @@ fn emit_model(
     s.push_str(&format!(
         "static {array_const}: &[(&str, ElementDecl)] = &[\n"
     ));
-    for (name, elem) in map {
+    for (type_key, elem) in map {
         s.push_str(&format!(
-            "    (\"{esc_name}\", ElementDecl {{\n\
+            "    (\"{esc_key}\", ElementDecl {{\n\
              \t\tname: \"{esc_name}\",\n\
              \t\tchildren: &[{children}],\n\
              \t\tattributes: &[{attrs}],\n\
              \t\ttext_allowed: {text},\n\
              \t}}),\n",
-            esc_name = escape_str(name),
+            esc_key = escape_str(type_key),
+            esc_name = escape_str(&elem.name),
             children = emit_children(&elem.children),
             attrs = emit_attrs(&elem.attributes),
             text = elem.text_allowed,
@@ -853,25 +930,28 @@ fn emit_model(
     s.push_str(&format!(
         "pub static {model_const}: SchemaModel = SchemaModel {{\n\
          \troot_name: \"{root_name}\",\n\
+         \troot_type: \"{root_type}\",\n\
          \telements: {array_const},\n\
-         }};\n\n"
+         }};\n\n",
+        root_type = escape_str(root_type)
     ));
     s
 }
 
-fn emit_children(children: &[(String, u32, Option<u32>)]) -> String {
+fn emit_children(children: &[(String, String, u32, Option<u32>)]) -> String {
     if children.is_empty() {
         return String::new();
     }
     let mut s = String::from("\n");
-    for (name, min, max) in children {
+    for (name, type_ref, min, max) in children {
         let max_str = match max {
             None => "None".to_string(),
             Some(n) => format!("Some({n})"),
         };
         s.push_str(&format!(
-            "\t\t\t(\"{}\", {}, {}),\n",
+            "\t\t\t(\"{}\", \"{}\", {}, {}),\n",
             escape_str(name),
+            escape_str(type_ref),
             min,
             max_str
         ));
@@ -926,6 +1006,9 @@ fn emit_content_hpf() -> String {
     // children + `<meta>` extension tags, `<manifest>` with `<item>`,
     // `<spine>` with `<itemref>`. We match by local name, so the
     // `dc:` prefix on metadata children is stripped away.
+    // Type keys mirror local names here — OPF 2.0 doesn't reuse the
+    // same element name in different contexts, so the trivial 1:1
+    // mapping is fine. Children entries are (name, type_ref, min, max).
     r##"// ──────────────────────────────────────────────────────────────────
 // CONTENT_HPF_MODEL — Contents/content.hpf (OPF package)
 // Hand-maintained block; OPF isn't part of KS X 6101.
@@ -935,10 +1018,10 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
     ("package", ElementDecl {
         name: "package",
         children: &[
-            ("metadata", 0, Some(1)),
-            ("manifest", 1, Some(1)),
-            ("spine", 0, Some(1)),
-            ("guide", 0, Some(1)),
+            ("metadata", "metadata", 0, Some(1)),
+            ("manifest", "manifest", 1, Some(1)),
+            ("spine", "spine", 0, Some(1)),
+            ("guide", "guide", 0, Some(1)),
         ],
         attributes: &[
             AttributeDecl { name: "version", ty: SimpleType::String, required: false },
@@ -952,22 +1035,22 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
     ("metadata", ElementDecl {
         name: "metadata",
         children: &[
-            ("title", 0, None),
-            ("creator", 0, None),
-            ("subject", 0, None),
-            ("description", 0, None),
-            ("publisher", 0, None),
-            ("contributor", 0, None),
-            ("date", 0, None),
-            ("type", 0, None),
-            ("format", 0, None),
-            ("identifier", 0, None),
-            ("source", 0, None),
-            ("language", 0, None),
-            ("relation", 0, None),
-            ("coverage", 0, None),
-            ("rights", 0, None),
-            ("meta", 0, None),
+            ("title",       "title",       0, None),
+            ("creator",     "creator",     0, None),
+            ("subject",     "subject",     0, None),
+            ("description", "description", 0, None),
+            ("publisher",   "publisher",   0, None),
+            ("contributor", "contributor", 0, None),
+            ("date",        "date",        0, None),
+            ("type",        "type",        0, None),
+            ("format",      "format",      0, None),
+            ("identifier",  "identifier",  0, None),
+            ("source",      "source",      0, None),
+            ("language",    "language",    0, None),
+            ("relation",    "relation",    0, None),
+            ("coverage",    "coverage",    0, None),
+            ("rights",      "rights",      0, None),
+            ("meta",        "meta",        0, None),
         ],
         attributes: &[],
         text_allowed: true,
@@ -980,7 +1063,7 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
     ("subject",      ElementDecl { name: "subject",      children: &[], attributes: &[], text_allowed: true }),
     ("description",  ElementDecl { name: "description",  children: &[], attributes: &[], text_allowed: true }),
     ("publisher",    ElementDecl { name: "publisher",    children: &[], attributes: &[], text_allowed: true }),
-    ("contributor",  ElementDecl { name: "contributor",  children: &[], attributes: &[], text_allowed: true }),
+    ("contributor", ElementDecl { name: "contributor",  children: &[], attributes: &[], text_allowed: true }),
     ("date",         ElementDecl { name: "date",         children: &[], attributes: &[], text_allowed: true }),
     ("type",         ElementDecl { name: "type",         children: &[], attributes: &[], text_allowed: true }),
     ("format",       ElementDecl { name: "format",       children: &[], attributes: &[], text_allowed: true }),
@@ -1003,7 +1086,7 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
     }),
     ("manifest", ElementDecl {
         name: "manifest",
-        children: &[("item", 1, None)],
+        children: &[("item", "item", 1, None)],
         attributes: &[],
         text_allowed: false,
     }),
@@ -1023,7 +1106,7 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
     }),
     ("spine", ElementDecl {
         name: "spine",
-        children: &[("itemref", 0, None)],
+        children: &[("itemref", "itemref", 0, None)],
         attributes: &[
             AttributeDecl { name: "toc", ty: SimpleType::String, required: false },
         ],
@@ -1040,7 +1123,7 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
     }),
     ("guide", ElementDecl {
         name: "guide",
-        children: &[("reference", 0, None)],
+        children: &[("reference", "reference", 0, None)],
         attributes: &[],
         text_allowed: false,
     }),
@@ -1058,6 +1141,7 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
 
 pub static CONTENT_HPF_MODEL: SchemaModel = SchemaModel {
     root_name: "package",
+    root_type: "package",
     elements: CONTENT_HPF_ELEMENTS,
 };
 
