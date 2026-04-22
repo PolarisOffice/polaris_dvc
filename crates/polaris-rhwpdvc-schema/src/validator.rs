@@ -95,75 +95,85 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                 let local: &[u8] = &local_owned;
 
                 // If we're inside a frame, check this is a permitted child.
+                // Skip the check entirely when the parent is the unknown-
+                // placeholder: if we couldn't resolve the parent's schema,
+                // any "unexpected child" report would just be cascade noise
+                // pointing at a ghost "<__unknown__>" element. Ancestors
+                // already reported the unknown parent; that's enough.
                 if let Some(parent) = stack.last_mut() {
-                    let allowed = parent
-                        .decl
-                        .children
-                        .iter()
-                        .any(|(name, _, _)| name.as_bytes() == local);
-                    if !allowed {
-                        let child_name = String::from_utf8_lossy(local).into_owned();
-                        // Build the "only these are allowed" hint. We cap
-                        // at the first 8 names so a single "run" element
-                        // (which has 40+ allowed children) doesn't produce
-                        // an unreadable message; remainder is counted.
-                        let allowed_list = format_allowed_children(parent.decl.children);
-                        let message = if parent.decl.children.is_empty() {
-                            format!(
+                    if std::ptr::eq(parent.decl, &UNKNOWN_ELEMENT) {
+                        // fall through to the declaration lookup below,
+                        // skipping allowed-child/maxOccurs checks.
+                    } else {
+                        let allowed = parent
+                            .decl
+                            .children
+                            .iter()
+                            .any(|(name, _, _)| name.as_bytes() == local);
+                        if !allowed {
+                            let child_name = String::from_utf8_lossy(local).into_owned();
+                            // Build the "only these are allowed" hint. We cap
+                            // at the first 8 names so a single "run" element
+                            // (which has 40+ allowed children) doesn't produce
+                            // an unreadable message; remainder is counted.
+                            let allowed_list = format_allowed_children(parent.decl.children);
+                            let message = if parent.decl.children.is_empty() {
+                                format!(
                                 "<{parent}> cannot contain any child elements, but found <{child_name}>",
                                 parent = parent.decl.name,
                             )
-                        } else {
-                            format!(
+                            } else {
+                                format!(
                                 "<{parent}> can only contain {allowed_list}, but found <{child_name}>",
                                 parent = parent.decl.name,
                             )
-                        };
-                        violations.push(SchemaViolation {
-                            code: ViolationCode::UnexpectedChild,
-                            element: child_name,
-                            attribute: None,
-                            message,
-                            byte_offset: offset,
-                        });
-                    } else {
-                        // Bump per-name child count; check maxOccurs.
-                        let key = parent
-                            .decl
-                            .children
-                            .iter()
-                            .find_map(|(name, _, _)| {
-                                if name.as_bytes() == local {
-                                    Some(*name)
-                                } else {
-                                    None
+                            };
+                            violations.push(SchemaViolation {
+                                code: ViolationCode::UnexpectedChild,
+                                element: child_name,
+                                attribute: None,
+                                message,
+                                byte_offset: offset,
+                            });
+                        } else {
+                            // Bump per-name child count; check maxOccurs.
+                            let key = parent
+                                .decl
+                                .children
+                                .iter()
+                                .find_map(|(name, _, _)| {
+                                    if name.as_bytes() == local {
+                                        Some(*name)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap();
+                            let count = parent.counts.entry(key).or_insert(0);
+                            *count += 1;
+                            let max = parent
+                                .decl
+                                .children
+                                .iter()
+                                .find(|(name, _, _)| *name == key)
+                                .map(|(_, _, max)| *max)
+                                .unwrap_or(Some(1));
+                            if let Some(max_v) = max {
+                                if *count > max_v {
+                                    violations.push(SchemaViolation {
+                                        code: ViolationCode::TooManyOccurrences,
+                                        element: key.to_string(),
+                                        attribute: None,
+                                        message: format!(
+                                            "<{}> appears {} times under <{}>, max {}",
+                                            key, count, parent.decl.name, max_v
+                                        ),
+                                        byte_offset: offset,
+                                    });
                                 }
-                            })
-                            .unwrap();
-                        let count = parent.counts.entry(key).or_insert(0);
-                        *count += 1;
-                        let max = parent
-                            .decl
-                            .children
-                            .iter()
-                            .find(|(name, _, _)| *name == key)
-                            .map(|(_, _, max)| *max)
-                            .unwrap_or(Some(1));
-                        if let Some(max_v) = max {
-                            if *count > max_v {
-                                violations.push(SchemaViolation {
-                                    code: ViolationCode::TooManyOccurrences,
-                                    element: key.to_string(),
-                                    attribute: None,
-                                    message: format!(
-                                        "<{}> appears {} times under <{}>, max {}",
-                                        key, count, parent.decl.name, max_v
-                                    ),
-                                    byte_offset: offset,
-                                });
                             }
                         }
-                    }
+                    } // end "parent != UNKNOWN_ELEMENT" branch
                 }
 
                 // Look up the declaration for this element (so we can
@@ -256,6 +266,13 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
             }
             Event::End(_) => {
                 if let Some(frame) = stack.pop() {
+                    // Skip minOccurs checks on the unknown placeholder —
+                    // we couldn't resolve the schema, so reporting
+                    // "missing children" against an empty placeholder is
+                    // noise.
+                    if std::ptr::eq(frame.decl, &UNKNOWN_ELEMENT) {
+                        continue;
+                    }
                     // minOccurs check: any child with min > seen count.
                     for (name, min, _) in frame.decl.children {
                         if *min == 0 {

@@ -34,13 +34,222 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
                 ("metadata", 0, Some(1)),
                 ("manifest", 1, Some(1)),
                 ("spine", 0, Some(1)),
+                ("guide", 0, Some(1)),
             ],
-            attributes: &[AttributeDecl {
-                name: "version",
-                ty: SimpleType::String,
-                required: false,
-            }],
+            attributes: &[
+                AttributeDecl {
+                    name: "version",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "unique-identifier",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "id",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+            ],
             text_allowed: false,
+        },
+    ),
+    // OPF <metadata> block with Dublin Core children. dc: prefix is
+    // stripped during validation so we match on local names only.
+    (
+        "metadata",
+        ElementDecl {
+            name: "metadata",
+            children: &[
+                ("title", 0, None),
+                ("creator", 0, None),
+                ("subject", 0, None),
+                ("description", 0, None),
+                ("publisher", 0, None),
+                ("contributor", 0, None),
+                ("date", 0, None),
+                ("type", 0, None),
+                ("format", 0, None),
+                ("identifier", 0, None),
+                ("source", 0, None),
+                ("language", 0, None),
+                ("relation", 0, None),
+                ("coverage", 0, None),
+                ("rights", 0, None),
+                ("meta", 0, None),
+            ],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    // DC elements — all text-only content with no declared attribute
+    // set (OPF lets vendors attach arbitrary xml:lang / id, which we
+    // don't want to flag as "unknown attribute").
+    (
+        "title",
+        ElementDecl {
+            name: "title",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "creator",
+        ElementDecl {
+            name: "creator",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "subject",
+        ElementDecl {
+            name: "subject",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "description",
+        ElementDecl {
+            name: "description",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "publisher",
+        ElementDecl {
+            name: "publisher",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "contributor",
+        ElementDecl {
+            name: "contributor",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "date",
+        ElementDecl {
+            name: "date",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "type",
+        ElementDecl {
+            name: "type",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "format",
+        ElementDecl {
+            name: "format",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "identifier",
+        ElementDecl {
+            name: "identifier",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "source",
+        ElementDecl {
+            name: "source",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "language",
+        ElementDecl {
+            name: "language",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "relation",
+        ElementDecl {
+            name: "relation",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "coverage",
+        ElementDecl {
+            name: "coverage",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "rights",
+        ElementDecl {
+            name: "rights",
+            children: &[],
+            attributes: &[],
+            text_allowed: true,
+        },
+    ),
+    (
+        "meta",
+        ElementDecl {
+            name: "meta",
+            children: &[],
+            attributes: &[
+                AttributeDecl {
+                    name: "name",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "content",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "property",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "scheme",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+            ],
+            text_allowed: true,
         },
     ),
     (
@@ -82,7 +291,11 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
         ElementDecl {
             name: "spine",
             children: &[("itemref", 0, None)],
-            attributes: &[],
+            attributes: &[AttributeDecl {
+                name: "toc",
+                ty: SimpleType::String,
+                required: false,
+            }],
             text_allowed: false,
         },
     ),
@@ -91,11 +304,52 @@ static CONTENT_HPF_ELEMENTS: &[(&str, ElementDecl)] = &[
         ElementDecl {
             name: "itemref",
             children: &[],
-            attributes: &[AttributeDecl {
-                name: "idref",
-                ty: SimpleType::String,
-                required: true,
-            }],
+            attributes: &[
+                AttributeDecl {
+                    name: "idref",
+                    ty: SimpleType::String,
+                    required: true,
+                },
+                AttributeDecl {
+                    name: "linear",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+            ],
+            text_allowed: false,
+        },
+    ),
+    (
+        "guide",
+        ElementDecl {
+            name: "guide",
+            children: &[("reference", 0, None)],
+            attributes: &[],
+            text_allowed: false,
+        },
+    ),
+    (
+        "reference",
+        ElementDecl {
+            name: "reference",
+            children: &[],
+            attributes: &[
+                AttributeDecl {
+                    name: "type",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "title",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+                AttributeDecl {
+                    name: "href",
+                    ty: SimpleType::String,
+                    required: false,
+                },
+            ],
             text_allowed: false,
         },
     ),
