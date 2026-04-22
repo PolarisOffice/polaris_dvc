@@ -435,9 +435,35 @@
         margin-right: 8px;
       }
       .viewer-content .code {
-        white-space: pre;
+        /* `pre-wrap` keeps indentation + newlines but wraps long
+           attribute lists so they don't require horizontal scrolling.
+           `break-word` is necessary for very long tokens (e.g. a
+           quoted attribute value that alone exceeds the column). */
+        white-space: pre-wrap;
+        word-break: break-word;
         flex: 1;
         overflow: visible;
+      }
+      /* XML syntax colors. Chosen to read well on the default light
+         background without being eye-watering. */
+      .x-punct   { color: #94a3b8; }
+      .x-tagname { color: #2563eb; font-weight: 500; }
+      .x-attr    { color: #ca8a04; }
+      .x-val     { color: #16a34a; }
+      .x-comment { color: #6b7280; font-style: italic; }
+      .x-cdata   { color: #9333ea; }
+      .x-pi      { color: #8b5cf6; }
+      .x-text    { color: var(--fg); }
+      /* When the line is highlighted (click-to-locate), mute the
+         syntax colors so the highlight background stays readable. */
+      .viewer-content .line.highlight .x-punct,
+      .viewer-content .line.highlight .x-tagname,
+      .viewer-content .line.highlight .x-attr,
+      .viewer-content .line.highlight .x-val,
+      .viewer-content .line.highlight .x-comment,
+      .viewer-content .line.highlight .x-cdata,
+      .viewer-content .line.highlight .x-pi {
+        color: #78350f;
       }
       .viewer .empty {
         padding: 24px;

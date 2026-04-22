@@ -383,6 +383,136 @@ function renderFileTree(entries) {
   });
 }
 
+// Decide whether a file should be rendered with XML syntax
+// highlighting. Hancom HWPX uses XML for everything except mimetype
+// and binary assets; covers .xml / .hpf (OPF package) / .rels
+// (container/relationships) / settings bits.
+function looksLikeXml(path, head) {
+  if (/\.(xml|hpf|rels)$/i.test(path)) return true;
+  // Some files (e.g. settings.xml inside META-INF variants) don't
+  // have canonical extensions — sniff the first bytes instead.
+  const prefix = head.slice(0, 40).trimStart();
+  return prefix.startsWith("<?xml") || prefix.startsWith("<");
+}
+
+// Minimal stateful XML tokenizer → colored HTML. Preserves all
+// characters verbatim (offset/line math downstream still works);
+// every `<span>` is closed before any `\n` so splitting by newline
+// produces complete per-line markup. Handles PI, comment, CDATA,
+// opening/closing tags, attributes with single- or double-quoted
+// values. Unknown / malformed input falls through as plain text
+// rather than throwing — we want the viewer to show *something*
+// even for broken fragments.
+function highlightXml(src) {
+  const out = [];
+  // Push text wrapped in `<span class="x-<cls>">…</span>`, splitting
+  // on newlines so no span ever crosses a line boundary.
+  function push(cls, raw) {
+    if (!raw) return;
+    const parts = raw.split("\n");
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) out.push("\n");
+      if (parts[i])
+        out.push(`<span class="x-${cls}">${escapeHtml(parts[i])}</span>`);
+    }
+  }
+  function pushRaw(s) {
+    if (!s) return;
+    // Plain text (outside tags) — still escape, preserve newlines.
+    out.push(escapeHtml(s));
+  }
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const lt = src.indexOf("<", i);
+    if (lt === -1) {
+      pushRaw(src.slice(i));
+      break;
+    }
+    if (lt > i) pushRaw(src.slice(i, lt));
+    if (src.startsWith("<!--", lt)) {
+      const end = src.indexOf("-->", lt + 4);
+      const stop = end === -1 ? n : end + 3;
+      push("comment", src.slice(lt, stop));
+      i = stop;
+    } else if (src.startsWith("<![CDATA[", lt)) {
+      const end = src.indexOf("]]>", lt + 9);
+      const stop = end === -1 ? n : end + 3;
+      push("cdata", src.slice(lt, stop));
+      i = stop;
+    } else if (src.startsWith("<?", lt)) {
+      const end = src.indexOf("?>", lt + 2);
+      const stop = end === -1 ? n : end + 2;
+      push("pi", src.slice(lt, stop));
+      i = stop;
+    } else {
+      // Regular tag: find matching `>` that isn't inside a quoted attr.
+      let j = lt + 1;
+      let inQuote = null;
+      while (j < n) {
+        const c = src[j];
+        if (inQuote) {
+          if (c === inQuote) inQuote = null;
+        } else if (c === '"' || c === "'") {
+          inQuote = c;
+        } else if (c === ">") {
+          break;
+        }
+        j++;
+      }
+      const stop = j < n ? j + 1 : n;
+      emitTag(src.slice(lt, stop), push);
+      i = stop;
+    }
+  }
+  return out.join("");
+}
+
+// Highlight one `<…>` unit. Split off opening punctuation, tag name,
+// attributes (name = "value"), and closing punctuation.
+function emitTag(raw, push) {
+  const open = raw.startsWith("</") ? "</" : "<";
+  const close = raw.endsWith("/>") ? "/>" : raw.endsWith(">") ? ">" : "";
+  const inner = raw.slice(open.length, raw.length - close.length);
+  // Tag name (may be empty on malformed fragments).
+  const nameMatch = /^[a-zA-Z_][\w:.-]*/.exec(inner);
+  const name = nameMatch ? nameMatch[0] : "";
+  let rest = inner.slice(name.length);
+  push("punct", open);
+  if (name) push("tagname", name);
+  // Attributes inside the tag body.
+  while (rest.length) {
+    const ws = /^\s+/.exec(rest);
+    if (ws) {
+      push("text", ws[0]);
+      rest = rest.slice(ws[0].length);
+      continue;
+    }
+    const attr = /^[a-zA-Z_][\w:.-]*/.exec(rest);
+    if (attr) {
+      push("attr", attr[0]);
+      rest = rest.slice(attr[0].length);
+      if (rest[0] === "=") {
+        push("punct", "=");
+        rest = rest.slice(1);
+        const q = rest[0];
+        if (q === '"' || q === "'") {
+          const endQ = rest.indexOf(q, 1);
+          const until = endQ === -1 ? rest.length : endQ + 1;
+          push("val", rest.slice(0, until));
+          rest = rest.slice(until);
+        }
+      }
+      continue;
+    }
+    // Anything else — emit as plain text so malformed fragments
+    // don't infinite-loop.
+    push("text", rest[0]);
+    rest = rest.slice(1);
+  }
+  if (close) push("punct", close);
+}
+
 // Render one ZIP entry's contents in the right-hand pane. If
 // `highlightOffset` is set (non-null), compute the matching line
 // and scroll there with a highlight.
@@ -427,14 +557,19 @@ function openFileInViewer(path, highlightOffset = null) {
       if (bytes[i] === 0x0a) targetLine++;
     }
   }
-  const lines = text.split("\n");
+  // XML files get syntax-colored; other text files render as-is.
+  // The highlighter guarantees no span crosses a newline, so the
+  // per-line split below still produces complete markup for each row.
+  const highlighted = looksLikeXml(path, text) ? highlightXml(text) : escapeHtml(text);
+  const lines = highlighted.split("\n");
   const rendered = lines
     .map((l, idx) => {
       const ln = idx + 1;
       const cls = targetLine === ln ? "line highlight" : "line";
-      // Preserve non-empty lines; render a non-breaking space for empty
-      // ones so the row still has height.
-      const body = l.length ? escapeHtml(l) : "&nbsp;";
+      // Render a non-breaking space for empty lines so the row still
+      // has height; anything else passes through unchanged (it's
+      // already escaped + span-wrapped by `highlightXml` / `escapeHtml`).
+      const body = l.length ? l : "&nbsp;";
       return `<div class="${cls}" data-line="${ln}"><span class="ln">${ln}</span><span class="code">${body}</span></div>`;
     })
     .join("");
