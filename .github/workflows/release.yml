@@ -1,0 +1,179 @@
+name: Release
+
+# Triggered by pushing a tag of the form `v*` (e.g. `v0.1.0`). Builds
+# the `polaris-dvc` CLI for Linux, macOS (Intel + Apple Silicon), and
+# Windows, then attaches the tarballs/zips to a GitHub Release whose
+# body is the matching section from CHANGELOG.md.
+#
+# Why tag-triggered (not manual `workflow_dispatch`): the tag is the
+# canonical release identity. A human cuts a tag once, everything
+# downstream — multi-OS build, artifact upload, Release creation —
+# runs deterministically off it. Nothing in this workflow ever pushes
+# back into the repo, so a re-run is safe.
+#
+# Bump / cut a release:
+#   1. Update CHANGELOG.md — move [Unreleased] content into a new
+#      `## [X.Y.Z] - YYYY-MM-DD` section.
+#   2. Bump `version = "X.Y.Z"` in root Cargo.toml `[workspace.package]`.
+#   3. `git commit -am "Release vX.Y.Z"`
+#   4. `git tag -a vX.Y.Z -m "Release X.Y.Z"`
+#   5. `git push && git push origin vX.Y.Z`
+#
+# Then this workflow fires.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Release creation needs `contents: write`. Everything else stays at
+# the repo-default `read`.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-13       # Intel macOS runner (macos-latest is now ARM)
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build polaris-dvc (release)
+        run: cargo build --release --locked -p polaris-dvc-cli --target ${{ matrix.target }}
+
+      - name: Stage artifact
+        id: stage
+        shell: bash
+        # Tarball / zip naming: `polaris-dvc-<tag>-<target>.<ext>`.
+        # Contents: the binary + LICENSE + NOTICE + README so the
+        # downloaded archive is self-explanatory.
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          target="${{ matrix.target }}"
+          name="polaris-dvc-v${version}-${target}"
+          staging="$(mktemp -d)/${name}"
+          mkdir -p "$staging"
+
+          if [[ "${{ matrix.os }}" == windows-latest ]]; then
+              cp "target/${target}/release/polaris-dvc.exe" "$staging/"
+          else
+              cp "target/${target}/release/polaris-dvc" "$staging/"
+          fi
+          cp LICENSE NOTICE README.md CHANGELOG.md "$staging/"
+
+          cd "$(dirname "$staging")"
+          if [[ "${{ matrix.archive }}" == zip ]]; then
+              # PowerShell on windows-latest has Compress-Archive; on
+              # linux/mac 7z/zip work but we won't hit that branch.
+              pwsh -Command "Compress-Archive -Path '$name' -DestinationPath '${name}.zip'"
+              archive="${name}.zip"
+          else
+              tar -czf "${name}.tar.gz" "$name"
+              archive="${name}.tar.gz"
+          fi
+
+          archive_path="$(pwd)/${archive}"
+          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=${archive}" >> "$GITHUB_OUTPUT"
+          ls -la "${archive_path}"
+
+      - name: Upload staged archive for the release job
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.stage.outputs.archive_name }}
+          path: ${{ steps.stage.outputs.archive_path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all staged archives
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List archives
+        run: ls -la dist/
+
+      - name: Extract release notes for this tag from CHANGELOG.md
+        id: notes
+        # Pull out the section whose header matches `## [<version>]`,
+        # stopping at the next `##` header. If no match, emit a
+        # single-line placeholder so the release body isn't empty.
+        # Then prepend a short install snippet — more useful to
+        # drive-by readers arriving at the Release page than the raw
+        # changelog alone.
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          notes_file="$(mktemp)"
+          awk -v v="${version}" '
+            $0 ~ ("^## \\[" v "\\]") { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > "$notes_file"
+          if [[ ! -s "$notes_file" ]]; then
+              echo "See [CHANGELOG.md](CHANGELOG.md) for details." > "$notes_file"
+          fi
+          {
+            printf '## Install\n\n'
+            printf 'Download the archive for your platform from the assets below, extract it, '
+            printf 'and place `polaris-dvc` somewhere on your `PATH`. The archive also ships '
+            printf '`LICENSE`, `NOTICE`, `README.md`, and `CHANGELOG.md`.\n\n'
+            printf 'Building from source:\n\n'
+            printf '```sh\n'
+            printf 'cargo install --git https://github.com/PolarisOffice/polaris_dvc --tag %s polaris-dvc-cli\n' "${tag}"
+            printf '```\n\n---\n\n'
+            cat "$notes_file"
+          } > release-body.md
+          echo "body_path=$(pwd)/release-body.md" >> "$GITHUB_OUTPUT"
+          echo "--- release body ---"
+          cat release-body.md
+
+      # SHA-pinned to the v3 tag. Same rationale as ci.yml's wasm-pack
+      # pin: guards against upstream tag retargeting.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: ${{ steps.notes.outputs.body_path }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
