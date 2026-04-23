@@ -66,48 +66,59 @@ jobs:
       - name: Build polaris-dvc (release)
         run: cargo build --release --locked -p polaris-dvc-cli --target ${{ matrix.target }}
 
-      - name: Stage artifact
+      # Stage the binary + LICENSE/NOTICE/README/CHANGELOG under a
+      # workspace-relative `dist-stage/<name>/` directory. Workspace-
+      # relative (not $TMP / mktemp) so path conventions are identical
+      # on Linux, macOS, and Windows Git Bash — the previous
+      # `mktemp -d` version emitted `/tmp/tmp.XXX/...` POSIX paths
+      # that `actions/upload-artifact` couldn't resolve on Windows.
+      - name: Stage files
         id: stage
         shell: bash
-        # Tarball / zip naming: `polaris-dvc-<tag>-<target>.<ext>`.
-        # Contents: the binary + LICENSE + NOTICE + README so the
-        # downloaded archive is self-explanatory.
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           target="${{ matrix.target }}"
           name="polaris-dvc-v${version}-${target}"
-          staging="$(mktemp -d)/${name}"
-          mkdir -p "$staging"
+          mkdir -p "dist-stage/${name}" dist
 
           if [[ "${{ matrix.os }}" == windows-latest ]]; then
-              cp "target/${target}/release/polaris-dvc.exe" "$staging/"
+              cp "target/${target}/release/polaris-dvc.exe" "dist-stage/${name}/"
           else
-              cp "target/${target}/release/polaris-dvc" "$staging/"
+              cp "target/${target}/release/polaris-dvc" "dist-stage/${name}/"
           fi
-          cp LICENSE NOTICE README.md CHANGELOG.md "$staging/"
+          cp LICENSE NOTICE README.md CHANGELOG.md "dist-stage/${name}/"
 
-          cd "$(dirname "$staging")"
-          if [[ "${{ matrix.archive }}" == zip ]]; then
-              # PowerShell on windows-latest has Compress-Archive; on
-              # linux/mac 7z/zip work but we won't hit that branch.
-              pwsh -Command "Compress-Archive -Path '$name' -DestinationPath '${name}.zip'"
-              archive="${name}.zip"
-          else
-              tar -czf "${name}.tar.gz" "$name"
-              archive="${name}.tar.gz"
-          fi
+          ls -la "dist-stage/${name}/"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
 
-          archive_path="$(pwd)/${archive}"
-          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
-          echo "archive_name=${archive}" >> "$GITHUB_OUTPUT"
-          ls -la "${archive_path}"
+      # Archive creation is split by platform so we use each runner's
+      # native tool: `tar` on POSIX (always available, produces
+      # deterministic gzip), `Compress-Archive` on Windows (a real
+      # PowerShell cmdlet that knows Windows path semantics — no bash
+      # ↔ pwsh path translation in the loop).
+      - name: Archive (tar.gz, POSIX)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="${{ steps.stage.outputs.name }}"
+          tar -C dist-stage -czf "dist/${name}.tar.gz" "${name}"
+          ls -la "dist/${name}.tar.gz"
+
+      - name: Archive (zip, Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = "${{ steps.stage.outputs.name }}"
+          Compress-Archive -Path "dist-stage/$name" -DestinationPath "dist/$name.zip"
+          Get-Item "dist/$name.zip" | Format-List FullName, Length
 
       - name: Upload staged archive for the release job
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.stage.outputs.archive_name }}
-          path: ${{ steps.stage.outputs.archive_path }}
+          name: ${{ steps.stage.outputs.name }}
+          path: dist/${{ steps.stage.outputs.name }}.*
           if-no-files-found: error
           retention-days: 7
 
