@@ -513,6 +513,66 @@ function emitTag(raw, push) {
   if (close) push("punct", close);
 }
 
+// Sniff image bytes for a renderable MIME type. Returns the mime
+// string (`"image/png"`, `"image/jpeg"`, …) on match, `null` when the
+// bytes aren't an image the browser can show inline.
+//
+// Magic-byte detection is the primary signal — file extensions in
+// HWPX `BinData/` are often generic (`image1.jpg` even when the
+// bytes are actually PNG). We fall back to the extension only for
+// formats whose signature overlaps with plain binary (e.g. ICO).
+function detectImageMime(bytes, path) {
+  const b = bytes;
+  if (b.length < 8) return null;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47)
+    return "image/png";
+  // JPEG: FF D8 FF
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  // GIF: 47 49 46 38 ("GIF8")
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38)
+    return "image/gif";
+  // BMP: 42 4D ("BM")
+  if (b[0] === 0x42 && b[1] === 0x4d) return "image/bmp";
+  // WebP: 52 49 46 46 ... 57 45 42 50 ("RIFF" + "WEBP" at offset 8)
+  if (
+    b[0] === 0x52 &&
+    b[1] === 0x49 &&
+    b[2] === 0x46 &&
+    b[3] === 0x46 &&
+    b[8] === 0x57 &&
+    b[9] === 0x45 &&
+    b[10] === 0x42 &&
+    b[11] === 0x50
+  )
+    return "image/webp";
+  // SVG is text-based; detect by extension since the magic-byte pass
+  // above already let it through to the text path.
+  if (/\.svg$/i.test(path)) return "image/svg+xml";
+  return null;
+}
+
+// Build a Blob URL from the raw bytes and render inside the viewer.
+// We use `Blob + URL.createObjectURL` rather than base64 data URIs so
+// the browser doesn't pay the ~33 % encoding overhead on multi-MB
+// images. The URL gets revoked when the viewer is re-rendered or the
+// page unloads — the tracked list lets us clean up without leaking.
+let pendingImageUrls = [];
+function revokePendingImageUrls() {
+  for (const u of pendingImageUrls) URL.revokeObjectURL(u);
+  pendingImageUrls = [];
+}
+function renderImageInViewer(viewer, path, bytes, mime) {
+  revokePendingImageUrls();
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  pendingImageUrls.push(url);
+  const sizeLabel = `${humanBytes(bytes.length)} · ${mime}`;
+  viewer.innerHTML =
+    `<div class="viewer-header">${escapeHtml(path)} · ${sizeLabel}</div>` +
+    `<div class="image-preview"><img src="${url}" alt="${escapeHtml(path)}" /></div>`;
+}
+
 // Render one ZIP entry's contents in the right-hand pane. If
 // `highlightOffset` is set (non-null), compute the matching line
 // and scroll there with a highlight.
@@ -534,14 +594,29 @@ function openFileInViewer(path, highlightOffset = null) {
       `<div class="empty">Read failed: ${escapeHtml(e.message)}</div>`;
     return;
   }
+  // Image detection runs before the text/binary fallback so image
+  // assets in `BinData/` render as a thumbnail instead of "binary,
+  // not displayed." Checks magic bytes (reliable) with file extension
+  // as a hint for the MIME type when bytes are ambiguous.
+  const imageMime = detectImageMime(bytes, path);
+  if (imageMime) {
+    renderImageInViewer(viewer, path, bytes, imageMime);
+    return;
+  }
   // UTF-8 decode and sniff for binary content (presence of C0 control
   // bytes other than tab/newline/CR in the first 512 bytes).
   const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   const looksBinary = /[\x00-\x08\x0E-\x1F]/.test(text.slice(0, 512));
   if (looksBinary) {
+    // Vector formats we detect but can't render natively (WMF, EMF)
+    // get a specific hint instead of a generic "binary" message.
+    const vectorHint =
+      /\.(wmf|emf)$/i.test(path)
+        ? " (vector image — WMF/EMF not rendered natively by browsers; download to inspect)"
+        : "";
     viewer.innerHTML =
       `<div class="viewer-header">${escapeHtml(path)} — ${humanBytes(bytes.length)} (binary)</div>` +
-      `<div class="binary">Binary data. Click-to-view not supported for this entry.</div>`;
+      `<div class="binary">Binary data. Click-to-view not supported for this entry.${vectorHint}</div>`;
     return;
   }
   // Map byte offset → 1-based line number by counting LFs before it.

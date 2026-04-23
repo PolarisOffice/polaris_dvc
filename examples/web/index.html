@@ -483,6 +483,28 @@
         color: var(--muted);
         font-size: 13px;
       }
+      .viewer .image-preview {
+        padding: 16px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        background:
+          repeating-conic-gradient(#eee 0 25%, transparent 0 50%)
+          50% 50% / 16px 16px;
+        /* Checkerboard background makes transparency obvious for
+           PNGs with alpha; inline conic-gradient keeps the CSS
+           self-contained (no extra asset). */
+      }
+      .viewer .image-preview img {
+        max-width: 100%;
+        max-height: 480px;
+        height: auto;
+        object-fit: contain;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
       /* Violation row click affordance */
       table.violations tr.has-location {
         cursor: pointer;
