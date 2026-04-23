@@ -1,5 +1,5 @@
 //! Parse `third_party/dvc-upstream/Source/JsonModel.h` and emit every
-//! `JID_*` constant into `crates/polaris-rhwpdvc-core/src/jid_registry.rs`.
+//! `JID_*` constant into `crates/polaris-dvc-core/src/jid_registry.rs`.
 //!
 //! Usage (from repo root):
 //!
@@ -40,7 +40,7 @@ fn main() {
         .join("JsonModel.h");
     let out_path = root
         .join("crates")
-        .join("polaris-rhwpdvc-core")
+        .join("polaris-dvc-core")
         .join("src")
         .join("jid_registry.rs");
 

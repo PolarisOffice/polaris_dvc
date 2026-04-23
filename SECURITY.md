@@ -1,6 +1,6 @@
 # Security policy
 
-polaris_rhwpdvc parses HWPX files — a ZIP-based container of
+polaris_dvc parses HWPX files — a ZIP-based container of
 user-authored XML. Because documents are often received from
 untrusted sources (email, downloads, ingest pipelines), parser
 correctness has security implications. This document covers what
@@ -31,11 +31,11 @@ In scope:
 - **Information disclosure from the rule spec.** A malicious
   `spec.json` that causes the engine to leak unrelated file
   contents, environment variables, or network state.
-- **WASM sandbox escapes** in the `polaris-rhwpdvc-wasm` crate or
+- **WASM sandbox escapes** in the `polaris-dvc-wasm` crate or
   its web demo — e.g., a validator input that causes the wasm
   module to access host resources it shouldn't.
 - **Integer overflow / under-read / under-write** in the OWPML
-  parser (`polaris-rhwpdvc-hwpx`).
+  parser (`polaris-dvc-hwpx`).
 
 Out of scope:
 
@@ -98,8 +98,8 @@ For the attack surface of each crate:
 
 | crate | untrusted input? | notes |
 |---|---|---|
-| `polaris-rhwpdvc-hwpx` | yes (HWPX bytes) | primary parser — most exposure |
-| `polaris-rhwpdvc-core` | yes (rule JSON, HWPX via hwpx crate) | secondary — processes outputs of hwpx |
-| `polaris-rhwpdvc-format` | yes (bytes, before parser dispatch) | sniff + route |
-| `polaris-rhwpdvc-cli` | yes (argv, stdin, files) | CLI flag parser + file I/O |
-| `polaris-rhwpdvc-wasm` | yes (JS → WASM boundary) | browser / Node consumers |
+| `polaris-dvc-hwpx` | yes (HWPX bytes) | primary parser — most exposure |
+| `polaris-dvc-core` | yes (rule JSON, HWPX via hwpx crate) | secondary — processes outputs of hwpx |
+| `polaris-dvc-format` | yes (bytes, before parser dispatch) | sniff + route |
+| `polaris-dvc-cli` | yes (argv, stdin, files) | CLI flag parser + file I/O |
+| `polaris-dvc-wasm` | yes (JS → WASM boundary) | browser / Node consumers |

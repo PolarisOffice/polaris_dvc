@@ -25,7 +25,7 @@ CLI: `--dvc-strict`. WASM: `validate(hwpx, spec, { dvcStrict: true })`.
 현재 strict에서 드롭되는 JID 블록: `2001` (PARA_SHAPE_HORIZONTAL),
 `3022-3025` (TABLE_MARGIN_*), `3026-3030` (TABLE_CAPTION_*),
 `3037-3040` (TABLE_BGFILL_*), `3041-3048` (TABLE_BGGRADATION_*).
-구현: `crates/polaris-rhwpdvc-core/src/engine.rs::dvc_strict_allows`.
+구현: `crates/polaris-dvc-core/src/engine.rs::dvc_strict_allows`.
 
 ---
 
@@ -141,7 +141,7 @@ Style/Shape/Hyperlink/AllOption 7개. 우린 `OutputOption` enum만 있고
 CLI엔 연결 안 됨.
 
 **할 일**:
-- `polaris-rhwpdvc-cli`에 `--output-option=table,style,shape,hyperlink,all`
+- `polaris-dvc-cli`에 `--output-option=table,style,shape,hyperlink,all`
 - 각 모드에서 어떤 필드 포함되는지는 이미 `ViolationRecord::to_json_value`
   에 구현
 
@@ -155,8 +155,8 @@ CLI엔 연결 안 됨.
 
 따라서 parity 관점에선 "할 일 없음"이지만, CheckProfile dual-mode
 철학을 따라 **Extended에서만** polaris 자체 XML 스키마를 제공한다:
-- `polaris-rhwpdvc -x input.hwpx -t spec.json` → XML 출력
-- `polaris-rhwpdvc --dvc-strict -x …` → upstream과 동일하게 exit 2
+- `polaris-dvc -x input.hwpx -t spec.json` → XML 출력
+- `polaris-dvc --dvc-strict -x …` → upstream과 동일하게 exit 2
 
 스키마: attribute-per-field `<violation>` 엘리먼트, 속성 이름·순서는
 JSON 출력과 1:1. Empty-text drop 규칙도 JSON과 동일.

@@ -1,4 +1,4 @@
-# polaris_rhwpdvc
+# polaris_dvc
 
 HWPX(OWPML) 문서의 **형식·구조·스키마·무결성**을 한 번에 검증하는 순수 Rust 툴체인. macOS · Linux · Windows · 브라우저(WASM) 모두 같은 코드 경로로 빌드된다.
 
@@ -27,28 +27,28 @@ HWPX(OWPML) 문서의 **형식·구조·스키마·무결성**을 한 번에 검
 
 ```
 crates/
-├── polaris-rhwpdvc-core/     규칙 엔진, 에러코드, 출력 모델
-├── polaris-rhwpdvc-hwpx/     HWPX(OWPML) 순수 Rust 파서
-├── polaris-rhwpdvc-schema/   KS X 6101 XSD 기반 스키마 검증기
-├── polaris-rhwpdvc-format/   포맷 감지 + HWP5 확장 슬롯
-├── polaris-rhwpdvc-cli/      CLI 바이너리 (polaris-rhwpdvc)
-└── polaris-rhwpdvc-wasm/     wasm-bindgen 래퍼
+├── polaris-dvc-core/     규칙 엔진, 에러코드, 출력 모델
+├── polaris-dvc-hwpx/     HWPX(OWPML) 순수 Rust 파서
+├── polaris-dvc-schema/   KS X 6101 XSD 기반 스키마 검증기
+├── polaris-dvc-format/   포맷 감지 + HWP5 확장 슬롯
+├── polaris-dvc-cli/      CLI 바이너리 (polaris-dvc)
+└── polaris-dvc-wasm/     wasm-bindgen 래퍼
 ```
 
 ## 빌드
 
 ```sh
 cargo build --workspace
-cargo test  --workspace --exclude polaris-rhwpdvc-wasm
+cargo test  --workspace --exclude polaris-dvc-wasm
 
 # WASM
-wasm-pack build crates/polaris-rhwpdvc-wasm --target web
+wasm-pack build crates/polaris-dvc-wasm --target web
 ```
 
 ## CLI 사용법
 
 ```sh
-cargo run -p polaris-rhwpdvc-cli -- [OPTIONS] <HWPX_FILE>
+cargo run -p polaris-dvc-cli -- [OPTIONS] <HWPX_FILE>
 ```
 
 ### 입력
@@ -91,25 +91,25 @@ cargo run -p polaris-rhwpdvc-cli -- [OPTIONS] <HWPX_FILE>
 
 ```sh
 # 기본: 전체 검사, 결과를 stdout 으로
-cargo run -p polaris-rhwpdvc-cli -- -t my-spec.json doc.hwpx
+cargo run -p polaris-dvc-cli -- -t my-spec.json doc.hwpx
 
 # 첫 위반에서 중단, 파일로 저장
-cargo run -p polaris-rhwpdvc-cli -- -s --file=out.json -t my-spec.json doc.hwpx
+cargo run -p polaris-dvc-cli -- -s --file=out.json -t my-spec.json doc.hwpx
 
 # DVC.exe 바이트 호환 모드
-cargo run -p polaris-rhwpdvc-cli -- --dvc-strict -t my-spec.json doc.hwpx
+cargo run -p polaris-dvc-cli -- --dvc-strict -t my-spec.json doc.hwpx
 
 # 스키마 축까지 포함 (엄격 OWPML 검증)
-cargo run -p polaris-rhwpdvc-cli -- --enable-schema -t my-spec.json doc.hwpx
+cargo run -p polaris-dvc-cli -- --enable-schema -t my-spec.json doc.hwpx
 
 # stdin 입력
-cat doc.hwpx | cargo run -p polaris-rhwpdvc-cli -- -t my-spec.json -
+cat doc.hwpx | cargo run -p polaris-dvc-cli -- -t my-spec.json -
 ```
 
 ## WASM API
 
 ```ts
-import init, { validate } from "./polaris_rhwpdvc.js";
+import init, { validate } from "./polaris_dvc.js";
 await init();
 
 const report = validate(hwpxBytes, specObject, {

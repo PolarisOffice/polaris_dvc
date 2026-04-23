@@ -48,7 +48,7 @@ alternative.
 
 ## 1. What we're trying to do
 
-`polaris_rhwpdvc` is a pure-Rust reimplementation of
+`polaris_dvc` is a pure-Rust reimplementation of
 [`hancom-io/dvc`](https://github.com/hancom-io/dvc) — a Windows-only
 C++ DLL that validates HWPX documents against a JSON rule spec.
 Our engine targets **byte-exact output parity** with upstream when

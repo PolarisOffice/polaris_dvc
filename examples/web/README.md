@@ -1,6 +1,6 @@
 # Web demo
 
-Minimal browser UI around `polaris-rhwpdvc-wasm`. Drop an `.hwpx`, edit
+Minimal browser UI around `polaris-dvc-wasm`. Drop an `.hwpx`, edit
 the rule spec, click **Validate**, see the DVC-shaped violation list.
 
 **Live demo:** <https://miles-hs-lee.github.io/polaris_rhwpdvc/>
@@ -14,12 +14,12 @@ Actions.
 ## Run locally
 
 The page loads the WASM module via ES modules with a relative path
-(`../../crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc.js`), so the
+(`../../crates/polaris-dvc-wasm/pkg/polaris_dvc.js`), so the
 server has to be started from the **repo root**.
 
 ```sh
 # 1. Build the WASM package (if you haven't already):
-wasm-pack build crates/polaris-rhwpdvc-wasm --target web --out-name polaris_rhwpdvc
+wasm-pack build crates/polaris-dvc-wasm --target web --out-name polaris_dvc
 
 # 2. Serve the repo root on any static HTTP server:
 python3 -m http.server 8080

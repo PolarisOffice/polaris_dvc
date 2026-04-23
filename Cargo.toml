@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/polaris-rhwpdvc-core",
-    "crates/polaris-rhwpdvc-hwpx",
-    "crates/polaris-rhwpdvc-format",
-    "crates/polaris-rhwpdvc-schema",
-    "crates/polaris-rhwpdvc-cli",
-    "crates/polaris-rhwpdvc-wasm",
+    "crates/polaris-dvc-core",
+    "crates/polaris-dvc-hwpx",
+    "crates/polaris-dvc-format",
+    "crates/polaris-dvc-schema",
+    "crates/polaris-dvc-cli",
+    "crates/polaris-dvc-wasm",
 ]
 
 [workspace.package]
@@ -15,7 +15,7 @@ edition = "2021"
 rust-version = "1.82"
 license = "Apache-2.0"
 repository = "https://github.com/miles-hs-lee/polaris_rhwpdvc"
-authors = ["Polaris RHWPDVC Contributors"]
+authors = ["Polaris DVC Contributors"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -29,10 +29,10 @@ serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
 getrandom = { version = "0.2", features = ["js"] }
 
-polaris-rhwpdvc-core = { path = "crates/polaris-rhwpdvc-core", version = "0.1.0" }
-polaris-rhwpdvc-hwpx = { path = "crates/polaris-rhwpdvc-hwpx", version = "0.1.0" }
-polaris-rhwpdvc-format = { path = "crates/polaris-rhwpdvc-format", version = "0.1.0" }
-polaris-rhwpdvc-schema = { path = "crates/polaris-rhwpdvc-schema", version = "0.1.0" }
+polaris-dvc-core = { path = "crates/polaris-dvc-core", version = "0.1.0" }
+polaris-dvc-hwpx = { path = "crates/polaris-dvc-hwpx", version = "0.1.0" }
+polaris-dvc-format = { path = "crates/polaris-dvc-format", version = "0.1.0" }
+polaris-dvc-schema = { path = "crates/polaris-dvc-schema", version = "0.1.0" }
 
 [profile.release]
 lto = "thin"

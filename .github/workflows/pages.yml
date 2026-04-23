@@ -36,15 +36,15 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build polaris-rhwpdvc-wasm
-        run: wasm-pack build crates/polaris-rhwpdvc-wasm --target web --out-name polaris_rhwpdvc
+      - name: Build polaris-dvc-wasm
+        run: wasm-pack build crates/polaris-dvc-wasm --target web --out-name polaris_dvc
 
       - name: Assemble site/
         # Flatten the demo into a self-contained static bundle:
         #   site/index.html
         #   site/app.js       (import path rewritten to ./pkg/)
-        #   site/pkg/polaris_rhwpdvc.js
-        #   site/pkg/polaris_rhwpdvc_bg.wasm
+        #   site/pkg/polaris_dvc.js
+        #   site/pkg/polaris_dvc_bg.wasm
         #   site/golden/<case>/{doc.hwpx,spec.json,expected.json,expected.xml}
         #   site/golden/manifest.json   (case list for the UI's preset menu)
         # The local-dev layout uses `../../crates/.../pkg/` which only works
@@ -55,16 +55,16 @@ jobs:
           mkdir -p site/pkg
           cp examples/web/index.html site/
           cp examples/web/app.js site/
-          cp crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc.js site/pkg/
-          cp crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc_bg.wasm site/pkg/
-          sed -i 's|\.\./\.\./crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc\.js|./pkg/polaris_rhwpdvc.js|' site/app.js
+          cp crates/polaris-dvc-wasm/pkg/polaris_dvc.js site/pkg/
+          cp crates/polaris-dvc-wasm/pkg/polaris_dvc_bg.wasm site/pkg/
+          sed -i 's|\.\./\.\./crates/polaris-dvc-wasm/pkg/polaris_dvc\.js|./pkg/polaris_dvc.js|' site/app.js
           # Sanity: confirm the rewrite landed.
-          grep -F './pkg/polaris_rhwpdvc.js' site/app.js
+          grep -F './pkg/polaris_dvc.js' site/app.js
 
           # Golden fixtures: expose each case as a browsable triplet so
           # the web UI can offer a "load golden case" preset. The
           # manifest.json file (generated + committed by the
-          # `golden_cases` test — see `crates/polaris-rhwpdvc-core/tests/
+          # `golden_cases` test — see `crates/polaris-dvc-core/tests/
           # golden.rs::write_manifest`) ships as-is alongside the cases.
           mkdir -p site/golden
           cp -R testdata/golden/* site/golden/

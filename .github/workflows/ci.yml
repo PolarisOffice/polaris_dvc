@@ -22,9 +22,9 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace --exclude polaris-rhwpdvc-wasm --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude polaris-dvc-wasm --all-targets -- -D warnings
       - name: test
-        run: cargo test --workspace --exclude polaris-rhwpdvc-wasm
+        run: cargo test --workspace --exclude polaris-dvc-wasm
 
   wasm:
     name: WASM build
@@ -38,6 +38,6 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: wasm-pack build (web)
-        run: wasm-pack build crates/polaris-rhwpdvc-wasm --target web
+        run: wasm-pack build crates/polaris-dvc-wasm --target web
       - name: wasm-pack build (nodejs)
-        run: wasm-pack build crates/polaris-rhwpdvc-wasm --target nodejs
+        run: wasm-pack build crates/polaris-dvc-wasm --target nodejs

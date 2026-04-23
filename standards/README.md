@@ -30,7 +30,7 @@ standards/
 
 ## 왜 필요한가 — 그리고 언제 필요한가
 
-`crates/polaris-rhwpdvc-schema/` 의 XSD-파생 Rust 코드 (`generated_owpml.rs`)
+`crates/polaris-dvc-schema/` 의 XSD-파생 Rust 코드 (`generated_owpml.rs`)
 는 `tools/gen-owpml/` 이 이 디렉토리를 읽어 생성한 **파생 팩트 데이터**다.
 Element 이름·자식 관계·속성 타입 등 **사실적 내용만** 추출하며 원본의
 documentation 텍스트·다이어그램은 복사하지 않는다.
@@ -42,7 +42,7 @@ documentation 텍스트·다이어그램은 복사하지 않는다.
 ```sh
 # 로컬에 standards/ 배치 후:
 cargo run --manifest-path tools/gen-owpml/Cargo.toml
-# -> crates/polaris-rhwpdvc-schema/src/generated_owpml.rs 갱신
+# -> crates/polaris-dvc-schema/src/generated_owpml.rs 갱신
 ```
 
 ## 저작권 / 배포 경계

@@ -2,7 +2,7 @@
 //!
 //! Walks `standards/KSX6101_OWPML/*.xsd`, extracts every element and
 //! type declaration, and emits
-//! `crates/polaris-rhwpdvc-schema/src/generated_owpml.rs` as a flat
+//! `crates/polaris-dvc-schema/src/generated_owpml.rs` as a flat
 //! table of [`ElementDecl`] entries that the validator consumes
 //! without further interpretation.
 //!
@@ -149,7 +149,7 @@ fn main() -> std::process::ExitCode {
     let xsd_dir = root.join("standards").join("KSX6101_OWPML");
     let out_path = root
         .join("crates")
-        .join("polaris-rhwpdvc-schema")
+        .join("polaris-dvc-schema")
         .join("src")
         .join("generated_owpml.rs");
 
@@ -206,7 +206,7 @@ fn main() -> std::process::ExitCode {
         Err(e) => {
             eprintln!(
                 "gen-owpml: rustfmt failed ({e}); writing unformatted output. \
-                 Run `cargo fmt -p polaris-rhwpdvc-schema` after this.",
+                 Run `cargo fmt -p polaris-dvc-schema` after this.",
             );
             rust
         }

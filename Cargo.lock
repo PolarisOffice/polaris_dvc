@@ -245,23 +245,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "polaris-rhwpdvc-cli"
+name = "polaris-dvc-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "polaris-rhwpdvc-core",
- "polaris-rhwpdvc-format",
- "polaris-rhwpdvc-hwpx",
+ "polaris-dvc-core",
+ "polaris-dvc-format",
+ "polaris-dvc-hwpx",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "polaris-rhwpdvc-core"
+name = "polaris-dvc-core"
 version = "0.1.0"
 dependencies = [
- "polaris-rhwpdvc-hwpx",
- "polaris-rhwpdvc-schema",
+ "polaris-dvc-hwpx",
+ "polaris-dvc-schema",
  "serde",
  "serde_json",
  "thiserror",
@@ -269,15 +269,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "polaris-rhwpdvc-format"
+name = "polaris-dvc-format"
 version = "0.1.0"
 dependencies = [
- "polaris-rhwpdvc-hwpx",
+ "polaris-dvc-hwpx",
  "thiserror",
 ]
 
 [[package]]
-name = "polaris-rhwpdvc-hwpx"
+name = "polaris-dvc-hwpx"
 version = "0.1.0"
 dependencies = [
  "quick-xml",
@@ -287,7 +287,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "polaris-rhwpdvc-schema"
+name = "polaris-dvc-schema"
 version = "0.1.0"
 dependencies = [
  "quick-xml",
@@ -295,14 +295,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "polaris-rhwpdvc-wasm"
+name = "polaris-dvc-wasm"
 version = "0.1.0"
 dependencies = [
  "getrandom",
  "js-sys",
- "polaris-rhwpdvc-core",
- "polaris-rhwpdvc-format",
- "polaris-rhwpdvc-hwpx",
+ "polaris-dvc-core",
+ "polaris-dvc-format",
+ "polaris-dvc-hwpx",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

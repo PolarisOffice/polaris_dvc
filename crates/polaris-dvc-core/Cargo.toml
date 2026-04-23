@@ -1,0 +1,19 @@
+[package]
+name = "polaris-dvc-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Rule engine, error codes, and output model for the polaris HWPX validator (DVC-compatible)."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+polaris-dvc-hwpx = { workspace = true }
+polaris-dvc-schema = { workspace = true }
+
+[dev-dependencies]
+zip = { workspace = true }

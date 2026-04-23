@@ -1,9 +1,9 @@
-// polaris_rhwpdvc — WASM demo glue.
+// polaris_dvc — WASM demo glue.
 //
 // Import path differs between local dev (served from repo root, so the
 // wasm pkg lives at `../../crates/...`) and the GitHub Pages build (the
 // workflow flattens everything into `site/` and rewrites this import to
-// `./pkg/polaris_rhwpdvc.js`). The rewrite happens in
+// `./pkg/polaris_dvc.js`). The rewrite happens in
 // `.github/workflows/pages.yml`; keep the local-dev string as-is.
 
 import init, {
@@ -12,7 +12,7 @@ import init, {
   describeError,
   listZipEntries,
   readZipEntry,
-} from "../../crates/polaris-rhwpdvc-wasm/pkg/polaris_rhwpdvc.js";
+} from "../../crates/polaris-dvc-wasm/pkg/polaris_dvc.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -71,7 +71,7 @@ const PRESETS = {
 // Axis metadata shared by the UI layer. Each JID range maps to one
 // axis; the label and short description appear in the breakdown
 // chips and the per-row badge. Keep this in sync with
-// `crates/polaris-rhwpdvc-core/src/error_codes.rs::Category`.
+// `crates/polaris-dvc-core/src/error_codes.rs::Category`.
 const AXES = [
   { id: "rule",      label: "Rule",      min: 1000,  max: 7999,  desc: "DVC-compatible rule spec (CharShape / ParaShape / Table / …)" },
   { id: "integrity", label: "Integrity", min: 11000, max: 11999, desc: "Cross-ref / manifest / lineseg consistency (polaris-original)" },
@@ -193,7 +193,7 @@ async function loadGoldenManifest() {
     // presets.
     sel.disabled = true;
     const label = IS_LOCAL_DEV
-      ? "(local dev: run `cargo test -p polaris-rhwpdvc-core --test golden` to materialize fixtures, or use the live site)"
+      ? "(local dev: run `cargo test -p polaris-dvc-core --test golden` to materialize fixtures, or use the live site)"
       : "(no manifest)";
     sel.options[0].textContent = `— ${label} —`;
     console.warn("golden manifest fetch failed:", e);

@@ -94,7 +94,7 @@ own `maxOccurs` on top of the outer.
 ## Golden fixture findings
 
 The 44 fixtures under `testdata/golden/` are synthetic — built from
-an in-Rust template at `crates/polaris-rhwpdvc-core/tests/support/mod.rs`.
+an in-Rust template at `crates/polaris-dvc-core/tests/support/mod.rs`.
 Those live in the repo and ship to the web demo's preset list, so
 they should be as schema-clean as the standard allows. One cleanup
 pass (commit `4a0*` series) dropped pervasive Hancom-extension

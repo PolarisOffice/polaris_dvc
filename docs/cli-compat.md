@@ -1,6 +1,6 @@
-# CLI 호환성 — polaris-rhwpdvc vs upstream DVC
+# CLI 호환성 — polaris-dvc vs upstream DVC
 
-polaris 의 CLI (`polaris-rhwpdvc`) 는 업스트림 [hancom-io/dvc](https://github.com/hancom-io/dvc) 의
+polaris 의 CLI (`polaris-dvc`) 는 업스트림 [hancom-io/dvc](https://github.com/hancom-io/dvc) 의
 `ExampleWindows.exe` 플래그 표면을 참조해 만들었다. 이 문서는 **실제 동작 기준** 으로 둘 사이의
 일치점과 의도적으로 다른 부분을 정리한다. 업스트림 플래그 정의의 실제 소스는
 `CommandParser.cpp::parsingShortOption` / `parsingLongOption` 이며, JSON 키 이름은
@@ -43,7 +43,7 @@ ExampleWindows.exe -j --file=Result.json -s -t test.json "005_busan.hwpx"
 는 뒤따르는 positional args 다. `-t` 가 "스펙 파일을 가리키는 플래그" 처럼 보이지만
 실제로는 그렇지 않다.
 
-## polaris-rhwpdvc 의 매핑
+## polaris-dvc 의 매핑
 
 | polaris | 업스트림 대응 | 메모 |
 |---|---|---|
@@ -79,21 +79,21 @@ ExampleWindows.exe -j --file=Result.json -s -t test.json "005_busan.hwpx"
 
 ```sh
 # 기본: JSON 출력, 모든 조건부 필드 포함, stdout 으로
-cargo run -p polaris-rhwpdvc-cli -- \
+cargo run -p polaris-dvc-cli -- \
     -t third_party/dvc-upstream/sample/test.json path/to/document.hwpx
 
 # 파일로 저장 + 첫 오류에서 중단
-cargo run -p polaris-rhwpdvc-cli -- \
+cargo run -p polaris-dvc-cli -- \
     -j --file=out.json -s \
     -t my-spec.json path/to/document.hwpx
 
 # DVC-strict: 업스트림과 바이트 동일성 목표
-cargo run -p polaris-rhwpdvc-cli -- \
+cargo run -p polaris-dvc-cli -- \
     -j --file=out.json --dvc-strict \
     -t my-spec.json path/to/document.hwpx
 
 # stdin 에서 HWPX 읽기 (파이프라인 친화)
-cat doc.hwpx | cargo run -p polaris-rhwpdvc-cli -- \
+cat doc.hwpx | cargo run -p polaris-dvc-cli -- \
     -j -t my-spec.json -
 ```
 
@@ -109,7 +109,7 @@ ExampleWindows.exe -j --file=Result.json -s -t test.json "005_busan.hwpx"
 polaris 에서 같은 의도를 쓰려면:
 
 ```sh
-cargo run -p polaris-rhwpdvc-cli -- \
+cargo run -p polaris-dvc-cli -- \
     -j --file=Result.json -s --output-option=table \
     -t test.json path/to/document.hwpx
 ```
@@ -139,7 +139,7 @@ cargo run -p polaris-rhwpdvc-cli -- \
 
 ## 참고 자료
 
-- `crates/polaris-rhwpdvc-cli/src/main.rs` — clap derive 기반 정의
+- `crates/polaris-dvc-cli/src/main.rs` — clap derive 기반 정의
 - `third_party/dvc-upstream/CommandParser.cpp` — 업스트림 원본 파서 로직
 - `third_party/dvc-upstream/Source/JsonModel.h` — 스펙 키 이름 매크로
 - `docs/dvc-parity-handoff.md` — DVC.exe 와 바이트 parity 달성 시도 기록

@@ -1,4 +1,4 @@
-# Dependabot configuration for polaris_rhwpdvc.
+# Dependabot configuration for polaris_dvc.
 #
 # Watches two ecosystems:
 #   1. cargo — the 5-crate workspace's direct dependencies.

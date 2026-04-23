@@ -2,12 +2,12 @@
 
 ## What it is
 
-`crates/polaris-rhwpdvc-core/src/jid_registry.rs` holds a `pub const JID_*:
+`crates/polaris-dvc-core/src/jid_registry.rs` holds a `pub const JID_*:
 ErrorCode` declaration for every `#define JID_*` in upstream
 `third_party/dvc-upstream/Source/JsonModel.h` — 217 entries at the time
 this was written.
 
-The curated `jid` submodule in `crates/polaris-rhwpdvc-core/src/error_codes.rs`
+The curated `jid` submodule in `crates/polaris-dvc-core/src/error_codes.rs`
 is a short-name alias layer over that registry (e.g., `jid::CHAR_SHAPE_
 FONTSIZE` → `jid_registry::JID_CHAR_SHAPE_FONTSIZE`). Values live in the
 registry so they can never drift from upstream.
@@ -21,7 +21,7 @@ cargo run --manifest-path tools/gen-jids/Cargo.toml
 ```
 
 The tool rewrites `jid_registry.rs` in full. A safety net in
-`crates/polaris-rhwpdvc-core/tests/jid_registry_drift.rs` runs on every
+`crates/polaris-dvc-core/tests/jid_registry_drift.rs` runs on every
 `cargo test` and fails if the committed registry's numeric values don't
 match what `JsonModel.h` implies. If you're mid-edit and need to bypass
 that check temporarily, set `POLARIS_ALLOW_JID_DRIFT=1`.
@@ -29,18 +29,18 @@ that check temporarily, set `POLARIS_ALLOW_JID_DRIFT=1`.
 ## How to wire a new JID into the engine
 
 1. Find the upstream constant in the generated file, e.g.
-   `JID_TABLE_SIZEWIDTH` (`crates/polaris-rhwpdvc-core/src/jid_registry.rs`).
+   `JID_TABLE_SIZEWIDTH` (`crates/polaris-dvc-core/src/jid_registry.rs`).
 2. Add a short-name alias in the `jid` module of
-   `crates/polaris-rhwpdvc-core/src/error_codes.rs`:
+   `crates/polaris-dvc-core/src/error_codes.rs`:
    ```rust
    pub const TABLE_SIZE_WIDTH: ErrorCode = r::JID_TABLE_SIZEWIDTH;
    ```
 3. Add an `ErrorCode::text(self)` arm in the same file if you want a
    human-readable message for the code.
 4. Reference the alias from the engine's checker (e.g.,
-   `crates/polaris-rhwpdvc-core/src/engine.rs::check_table`).
+   `crates/polaris-dvc-core/src/engine.rs::check_table`).
 5. If the value appears in a committed golden case, regenerate with
-   `POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-rhwpdvc-core --test golden`.
+   `POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden`.
 
 ## Naming convention
 

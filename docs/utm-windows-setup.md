@@ -93,7 +93,7 @@ VS Build Tools 은 무거움 (~7 GB 다운, 설치 후 ~10 GB). 차 한 잔.
 # 적당한 작업 디렉토리
 cd C:\dev
 git clone https://github.com/miles-hs-lee/polaris_rhwpdvc
-cd polaris_rhwpdvc
+cd polaris_dvc
 ```
 
 ## 7. 파리티 스크립트 실행
@@ -132,7 +132,7 @@ reg add 'HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps' `
 # 실패 명령 실행 (실제 spec 파일 사용 — schemas/jsonFullSpec.json 은
 # JSON Schema 레퍼런스라 직접 spec 으로 쓰면 parse 문제. 자세한 구분은
 # docs/cli-compat.md 의 "스펙 파일 vs 스키마 파일" 절)
-cd C:\dev\polaris_rhwpdvc
+cd C:\dev\polaris_dvc
 & "$env:TEMP\polaris-dvc-build\dvc\Release\ExampleWindows.exe" `
     -j -o --file=out.json third_party\dvc-upstream\sample\test.json testdata\real-samples\empty.hwpx
 

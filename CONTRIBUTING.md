@@ -1,4 +1,4 @@
-# Contributing to polaris_rhwpdvc
+# Contributing to polaris_dvc
 
 Thanks for considering a contribution. This project re-implements
 [hancom-io/dvc](https://github.com/hancom-io/dvc) in pure Rust, with
@@ -30,9 +30,9 @@ Requires Rust 1.82 or newer (pinned in `rust-toolchain.toml`).
 
 ```sh
 git clone https://github.com/miles-hs-lee/polaris_rhwpdvc
-cd polaris_rhwpdvc
+cd polaris_dvc
 cargo build --workspace
-cargo test  --workspace --exclude polaris-rhwpdvc-wasm
+cargo test  --workspace --exclude polaris-dvc-wasm
 ```
 
 For the WASM target:
@@ -41,7 +41,7 @@ For the WASM target:
 # Install wasm-pack once:
 cargo install wasm-pack
 
-wasm-pack build crates/polaris-rhwpdvc-wasm --target web
+wasm-pack build crates/polaris-dvc-wasm --target web
 ```
 
 ## Checks your PR must pass
@@ -51,9 +51,9 @@ pushing to avoid round-trips:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --exclude polaris-rhwpdvc-wasm --all-targets -- -D warnings
-cargo test  --workspace --exclude polaris-rhwpdvc-wasm
-wasm-pack build crates/polaris-rhwpdvc-wasm --target web
+cargo clippy --workspace --exclude polaris-dvc-wasm --all-targets -- -D warnings
+cargo test  --workspace --exclude polaris-dvc-wasm
+wasm-pack build crates/polaris-dvc-wasm --target web
 ```
 
 The clippy run is strict (`-D warnings`). If you need to suppress a
@@ -66,13 +66,13 @@ The `testdata/golden/<nn>_...` directories are the authoritative
 regression corpus. Each case is a triple `(doc.hwpx, spec.json,
 expected.json)` (plus `expected.xml` as of Phase 8). The
 `doc.hwpx` bytes are *reproducible from an in-Rust fixture template*
-at `crates/polaris-rhwpdvc-core/tests/support/mod.rs` — `cargo test`
+at `crates/polaris-dvc-core/tests/support/mod.rs` — `cargo test`
 rebuilds the zip and asserts it matches the committed bytes exactly.
 
 If you change the fixture template or an engine checker, regenerate:
 
 ```sh
-POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-rhwpdvc-core --test golden
+POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden
 ```
 
 **Review the diff before committing.** A regenerated `expected.json`
@@ -83,9 +83,9 @@ Adding a new golden case: see `docs/golden-tests.md` for the full
 walkthrough. Short version:
 
 1. Add a `Case { name: "NN_descr", build, spec }` entry to
-   `crates/polaris-rhwpdvc-core/tests/golden.rs`.
+   `crates/polaris-dvc-core/tests/golden.rs`.
 2. `mkdir testdata/golden/NN_descr`.
-3. `POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-rhwpdvc-core --test golden`.
+3. `POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden`.
 4. Commit the four generated files plus your source changes.
 
 ## Adding a new JID (error code)
@@ -93,7 +93,7 @@ walkthrough. Short version:
 Follow the template in `CLAUDE.md` §"How to wire a new JID into the
 engine". The short version:
 
-1. Find the constant in `crates/polaris-rhwpdvc-core/src/jid_registry.rs`
+1. Find the constant in `crates/polaris-dvc-core/src/jid_registry.rs`
    (generated from upstream; do not hand-edit).
 2. Add a short-name alias in the `jid` module of `src/error_codes.rs`.
 3. Add an arm to `ErrorCode::text(self)` with a human-readable message

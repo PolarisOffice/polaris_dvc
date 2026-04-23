@@ -51,7 +51,7 @@ ViolationRecord 리스트 (1-6 의 union, severity 포함)
    로는 불안정
 2. **공개 도메인의 빈 자리** — OWPML XSD 로 HWPX 를 검증하는 공개 툴이
    없다. 한컴 `hwpx-owpml-model` 은 로딩만 하고 XSD 검증 안 함.
-   `polaris-rhwpdvc` 가 KS X 6101 레퍼런스 체커 자리를 채움
+   `polaris-dvc` 가 KS X 6101 레퍼런스 체커 자리를 채움
 3. **기존 구조 재사용 용이** — JID 레지스트리·엔진·순수-Rust HWPX 파서·
    출력 모델 이미 준비됨. 새 카테고리 블록 몇 개 추가 + check 함수
    추가로 수평 확장
@@ -61,8 +61,8 @@ ViolationRecord 리스트 (1-6 의 union, severity 포함)
 ## 포지셔닝
 
 ```
-프로젝트 이름:  polaris_rhwpdvc   (유지)
-패키지:        polaris-rhwpdvc-*  (유지)
+프로젝트 이름:  polaris_dvc   (유지)
+패키지:        polaris-dvc-*  (유지)
 태그라인 변경: "HWPX Document Validation Checker (DVC)"  →
               "HWPX 종합 검증 툴 — 규칙·구조·스키마·무결성 종합 체커"
 
@@ -88,7 +88,7 @@ DVC 호환은 **기능 중 하나**. Spec 모드 (KS X 6101 표준 기준 검증
 ### 1. 기본 (모든 Axis)
 
 ```sh
-polaris-rhwpdvc -t rules.json doc.hwpx
+polaris-dvc -t rules.json doc.hwpx
 # → container / integrity / schema / rule 모두 검사
 # → Violation 리스트 (카테고리별 분류된 severity 포함)
 ```
@@ -96,21 +96,21 @@ polaris-rhwpdvc -t rules.json doc.hwpx
 ### 2. Rule 검증만 (DVC 호환 모드)
 
 ```sh
-polaris-rhwpdvc --dvc-strict -t rules.json doc.hwpx
+polaris-dvc --dvc-strict -t rules.json doc.hwpx
 # → 1000-7999 범위만, upstream DVC.exe 가 구현한 JID 만
 ```
 
 ### 3. Schema 검증만
 
 ```sh
-polaris-rhwpdvc --only=schema doc.hwpx
+polaris-dvc --only=schema doc.hwpx
 # → rule spec 없이도 OK. 순수 표준 적합성만
 ```
 
 ### 4. Container 검증만 (빠른 sanity check)
 
 ```sh
-polaris-rhwpdvc --only=container doc.hwpx
+polaris-dvc --only=container doc.hwpx
 # → ZIP 수준만, XML 파싱 안 함. 대량 파일 스크리닝용
 ```
 
@@ -118,12 +118,12 @@ polaris-rhwpdvc --only=container doc.hwpx
 
 ```
 crates/
-├── polaris-rhwpdvc-core/     엔진·에러코드·출력·Integrity/Container 체크   (기존)
-├── polaris-rhwpdvc-hwpx/     HWPX 파서                                       (기존)
-├── polaris-rhwpdvc-format/   포맷 감지 + dispatch trait                       (기존)
-├── polaris-rhwpdvc-schema/   신규: OWPML 스키마 모델 + validator             (Phase 3)
-├── polaris-rhwpdvc-cli/      CLI                                              (기존)
-└── polaris-rhwpdvc-wasm/     WASM 래퍼                                        (기존)
+├── polaris-dvc-core/     엔진·에러코드·출력·Integrity/Container 체크   (기존)
+├── polaris-dvc-hwpx/     HWPX 파서                                       (기존)
+├── polaris-dvc-format/   포맷 감지 + dispatch trait                       (기존)
+├── polaris-dvc-schema/   신규: OWPML 스키마 모델 + validator             (Phase 3)
+├── polaris-dvc-cli/      CLI                                              (기존)
+└── polaris-dvc-wasm/     WASM 래퍼                                        (기존)
 
 tools/
 ├── gen-jids/      upstream JID 헤더 → jid_registry.rs                (기존)
@@ -135,7 +135,7 @@ tools/
 - **Phase 0** (준비) — .gitignore, standards/README, 본 문서, README 태그라인 재작성
 - **Phase 1** — Integrity 확장 (cross-ref 검사 대폭 추가)
 - **Phase 2** — Container JID 12000 블록 신설
-- **Phase 3** — `polaris-rhwpdvc-schema` 크레이트 + codegen + XSD 검증 (실용적 80% 커버)
+- **Phase 3** — `polaris-dvc-schema` 크레이트 + codegen + XSD 검증 (실용적 80% 커버)
 - **Phase 4** — Invariant 체크 (예약)
 - **Phase 5** — Encoding / Semantic warning (예약)
 - **Phase 6** — severity 필터링 + web UI 대시보드 (예약)

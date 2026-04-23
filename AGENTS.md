@@ -1,4 +1,4 @@
-# AGENTS.md — AI Agent working notes for polaris_rhwpdvc
+# AGENTS.md — AI Agent working notes for polaris_dvc
 
 Read this before doing any non-trivial work in this repo. It describes
 the invariants that catch you out if you don't know them, the commands
@@ -10,7 +10,7 @@ It is intentionally denser than the user-facing `README.md`.
 
 ## What this project is, in one paragraph
 
-polaris_rhwpdvc is a pure-Rust reimplementation of [hancom-io/dvc](https://github.com/hancom-io/dvc),
+polaris_dvc is a pure-Rust reimplementation of [hancom-io/dvc](https://github.com/hancom-io/dvc),
 a Windows-only C++ DLL that validates HWPX (OWPML) documents against
 JSON rule specs. The port keeps byte-level compatibility goals with
 upstream — same rule-file schema (`sample/jsonFullSpec.json`), same
@@ -22,13 +22,13 @@ JSON field names and ordering — while running on macOS, Linux, and
 ## Workspace layout
 
 ```
-polaris_rhwpdvc/
+polaris_dvc/
 ├── crates/
-│   ├── polaris-rhwpdvc-core/    rule engine, error codes, output model, Report
-│   ├── polaris-rhwpdvc-hwpx/    pure-Rust HWPX (OWPML) parser (zip + quick-xml)
-│   ├── polaris-rhwpdvc-format/  sniff() + parse() dispatch; reserves HWP5 slot
-│   ├── polaris-rhwpdvc-cli/     `polaris-rhwpdvc` binary (DVC-compatible flags)
-│   └── polaris-rhwpdvc-wasm/    wasm-bindgen shim (single `validate` entry)
+│   ├── polaris-dvc-core/    rule engine, error codes, output model, Report
+│   ├── polaris-dvc-hwpx/    pure-Rust HWPX (OWPML) parser (zip + quick-xml)
+│   ├── polaris-dvc-format/  sniff() + parse() dispatch; reserves HWP5 slot
+│   ├── polaris-dvc-cli/     `polaris-dvc` binary (DVC-compatible flags)
+│   └── polaris-dvc-wasm/    wasm-bindgen shim (single `validate` entry)
 ├── tools/gen-jids/              regenerates jid_registry.rs from JsonModel.h
 ├── schemas/jsonFullSpec.json    upstream rule schema sample (unchanged copy)
 ├── testdata/golden/<nn>_.../    (doc.hwpx, spec.json, expected.json) triples
@@ -44,16 +44,16 @@ root `Cargo.toml`. MSRV is pinned to 1.82 in `rust-toolchain.toml`.
 
 ### 1. JID values come from `JsonModel.h`, never from you
 
-The 217 error codes live in `crates/polaris-rhwpdvc-core/src/jid_registry.rs`.
+The 217 error codes live in `crates/polaris-dvc-core/src/jid_registry.rs`.
 That file is **generated**, not hand-edited. It mirrors every
 `#define JID_* N` in `third_party/dvc-upstream/Source/JsonModel.h`.
 
-A drift test (`crates/polaris-rhwpdvc-core/tests/jid_registry_drift.rs`)
+A drift test (`crates/polaris-dvc-core/tests/jid_registry_drift.rs`)
 re-parses the upstream header on every `cargo test` and fails if the
 committed registry's numeric values don't match. Bypass with
 `POLARIS_ALLOW_JID_DRIFT=1` only while mid-edit.
 
-The curated `jid` submodule in `crates/polaris-rhwpdvc-core/src/error_codes.rs`
+The curated `jid` submodule in `crates/polaris-dvc-core/src/error_codes.rs`
 exposes short-name aliases (`jid::TABLE_BGFILL_TYPE` →
 `jid_registry::JID_TABLE_BGFILL_TYPE`). **Engine code uses the alias; the
 alias refers to the registry.** Never hardcode an integer for an
@@ -70,7 +70,7 @@ cargo run --manifest-path tools/gen-jids/Cargo.toml
 
 Every case directory holds `doc.hwpx`, `spec.json`, `expected.json`. The
 `doc.hwpx` bytes are *reproducible from the in-Rust fixture template* in
-`crates/polaris-rhwpdvc-core/tests/support/mod.rs`. On every `cargo
+`crates/polaris-dvc-core/tests/support/mod.rs`. On every `cargo
 test` run, `tests/golden.rs` rebuilds each fixture and asserts:
 
 - the freshly built `doc.hwpx` bytes equal the committed file (byte-exact),
@@ -79,7 +79,7 @@ test` run, `tests/golden.rs` rebuilds each fixture and asserts:
 If you change the fixture template or an engine checker, regenerate:
 
 ```sh
-POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-rhwpdvc-core --test golden
+POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden
 ```
 
 Review the diff before committing. Orphan directories (case dir with no
@@ -92,7 +92,7 @@ files from the same engine run — they stay semantically identical.
 
 ### 3. Output JSON shape matches upstream DVCOutputJson
 
-The `ViolationRecord` struct in `crates/polaris-rhwpdvc-core/src/output.rs`
+The `ViolationRecord` struct in `crates/polaris-dvc-core/src/output.rs`
 field-maps 1:1 to upstream `DVCOutputJson.cpp` writes. Field **order
 matters** (serde_json uses `preserve_order`): upstream emits
 `CharIDRef, ParaPrIDRef, errorText, PageNo, LineNo, ErrorCode, TableID,
@@ -109,17 +109,17 @@ convenience fields.
 ```sh
 # Format + lint + test everything except WASM (which has a separate build):
 cargo fmt --all
-cargo clippy --workspace --exclude polaris-rhwpdvc-wasm --all-targets -- -D warnings
-cargo test --workspace --exclude polaris-rhwpdvc-wasm
+cargo clippy --workspace --exclude polaris-dvc-wasm --all-targets -- -D warnings
+cargo test --workspace --exclude polaris-dvc-wasm
 
 # WASM build (matches CI):
-wasm-pack build crates/polaris-rhwpdvc-wasm --target web
+wasm-pack build crates/polaris-dvc-wasm --target web
 
 # Regenerate golden fixtures after intentional engine/template change:
-POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-rhwpdvc-core --test golden
+POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden
 
 # Run the CLI directly:
-cargo run -p polaris-rhwpdvc-cli -- -j -t spec.json doc.hwpx
+cargo run -p polaris-dvc-cli -- -j -t spec.json doc.hwpx
 
 # Push to origin (wrapper that handles the PAT from .env.local):
 ./scripts/push.sh
@@ -133,11 +133,11 @@ CI runs `cargo fmt --check`, `cargo clippy -D warnings`, and
 End-to-end template for "upstream has rule X, we don't":
 
 1. **Find the constant.** Look in
-   `crates/polaris-rhwpdvc-core/src/jid_registry.rs`. It's already
+   `crates/polaris-dvc-core/src/jid_registry.rs`. It's already
    there — the registry is complete. E.g. `JID_TABLE_BGFILL_TYPE = 3037`.
 
 2. **Add a short-name alias** in the `jid` module of
-   `crates/polaris-rhwpdvc-core/src/error_codes.rs`:
+   `crates/polaris-dvc-core/src/error_codes.rs`:
    ```rust
    pub const TABLE_BGFILL_TYPE: ErrorCode = r::JID_TABLE_BGFILL_TYPE;
    ```
@@ -147,22 +147,22 @@ End-to-end template for "upstream has rule X, we don't":
    wording where possible.
 
 4. **Extend the rule schema.** In
-   `crates/polaris-rhwpdvc-core/src/rules/schema.rs`, add/extend the
+   `crates/polaris-dvc-core/src/rules/schema.rs`, add/extend the
    relevant struct (e.g. `TableSpec`, `BgFillSpec`). Use
    `#[serde(default)]` liberally — upstream specs are permissive about
    which fields are present. `#[serde(flatten)] extra:
    serde_json::Map<String, serde_json::Value>` catches unknown keys.
    If you add a new struct, re-export it from
-   `crates/polaris-rhwpdvc-core/src/rules/mod.rs`.
+   `crates/polaris-dvc-core/src/rules/mod.rs`.
 
 5. **Parse the HWPX side if needed.** If the rule compares against a
-   new OWPML attribute/element, extend `polaris-rhwpdvc-hwpx` — usually
+   new OWPML attribute/element, extend `polaris-dvc-hwpx` — usually
    `src/header.rs` (doc-wide tables like borderFill, charShape,
    paraShape) or `src/section.rs` (body elements). Add public types to
    `src/types.rs` and re-export from `src/lib.rs`. Write a unit test in
    the same file against a minimal XML snippet.
 
-6. **Write the checker.** In `crates/polaris-rhwpdvc-core/src/engine.rs`,
+6. **Write the checker.** In `crates/polaris-dvc-core/src/engine.rs`,
    add a `check_<thing>(ctx, node, spec) -> bool` function. The
    `bool` is "continue checking" — return `false` only when
    `ctx.push(v)` says the sink is full (typically `--simple` mode
@@ -170,17 +170,17 @@ End-to-end template for "upstream has rule X, we don't":
    push directly onto `ctx.records`.
 
 7. **Add a golden case.** In
-   `crates/polaris-rhwpdvc-core/tests/golden.rs`, append a `Case { name:
+   `crates/polaris-dvc-core/tests/golden.rs`, append a `Case { name:
    "<nn>_<descr>", build, spec }` entry. `mkdir
    testdata/golden/<nn>_<descr>`. Run `POLARIS_REGEN_FIXTURES=1 cargo
-   test -p polaris-rhwpdvc-core --test golden`. Commit all four files
+   test -p polaris-dvc-core --test golden`. Commit all four files
    (source edits + three fixture files per case).
 
 8. **Verify.**
    ```sh
    cargo fmt --all && \
-   cargo clippy --workspace --exclude polaris-rhwpdvc-wasm --all-targets -- -D warnings && \
-   cargo test --workspace --exclude polaris-rhwpdvc-wasm
+   cargo clippy --workspace --exclude polaris-dvc-wasm --all-targets -- -D warnings && \
+   cargo test --workspace --exclude polaris-dvc-wasm
    ```
 
 ## Conventions that catch out new contributors
@@ -189,7 +189,7 @@ End-to-end template for "upstream has rule X, we don't":
 
 Spec values like `fontsize`, `margin.left`, etc. accept either a single
 number or `{ "min": N, "max": M }`. The type is
-`crates/polaris-rhwpdvc-core/src/rules/schema.rs::Range64`, with a
+`crates/polaris-dvc-core/src/rules/schema.rs::Range64`, with a
 custom `Deserialize`. Scalar values become `Range64::Exact(n)`; objects
 become `Range64::Bounds { min, max }`. Engine checkers use
 `range.matches(actual)` — don't open-code the comparison.
@@ -248,16 +248,16 @@ happens via regular rebase-on-merge on GitHub.
 
 | looking for… | file |
 |---|---|
-| How a rule category is validated | `crates/polaris-rhwpdvc-core/src/engine.rs` — one `check_<cat>` fn per JID group |
-| How to express a rule in JSON | `crates/polaris-rhwpdvc-core/src/rules/schema.rs` |
-| Error-code numeric table | `crates/polaris-rhwpdvc-core/src/jid_registry.rs` (generated) |
-| Short-name aliases + messages | `crates/polaris-rhwpdvc-core/src/error_codes.rs` |
-| HWPX element parsing | `crates/polaris-rhwpdvc-hwpx/src/header.rs`, `section.rs` |
-| HWPX types exposed to engine | `crates/polaris-rhwpdvc-hwpx/src/types.rs` |
-| Output JSON shape | `crates/polaris-rhwpdvc-core/src/output.rs` |
-| CLI flag surface | `crates/polaris-rhwpdvc-cli/src/main.rs` |
-| Test fixture builder | `crates/polaris-rhwpdvc-core/tests/support/mod.rs` |
-| Golden case list | `crates/polaris-rhwpdvc-core/tests/golden.rs` |
+| How a rule category is validated | `crates/polaris-dvc-core/src/engine.rs` — one `check_<cat>` fn per JID group |
+| How to express a rule in JSON | `crates/polaris-dvc-core/src/rules/schema.rs` |
+| Error-code numeric table | `crates/polaris-dvc-core/src/jid_registry.rs` (generated) |
+| Short-name aliases + messages | `crates/polaris-dvc-core/src/error_codes.rs` |
+| HWPX element parsing | `crates/polaris-dvc-hwpx/src/header.rs`, `section.rs` |
+| HWPX types exposed to engine | `crates/polaris-dvc-hwpx/src/types.rs` |
+| Output JSON shape | `crates/polaris-dvc-core/src/output.rs` |
+| CLI flag surface | `crates/polaris-dvc-cli/src/main.rs` |
+| Test fixture builder | `crates/polaris-dvc-core/tests/support/mod.rs` |
+| Golden case list | `crates/polaris-dvc-core/tests/golden.rs` |
 | Upstream references | `third_party/dvc-upstream/Source/{Checker,CheckList,DVCOutputJson,OWPMLReader,JsonModel}.*` |
 
 ## Structural-integrity checks (JID 11000-11999)
@@ -296,7 +296,7 @@ Adding a new integrity check:
    JID; `spec.json` is usually `"{}"` (pure integrity, no DVC rules).
 
 If the new check needs data the parser doesn't currently capture,
-extend `StructuralFacts` in `polaris-rhwpdvc-hwpx/src/types.rs` and
+extend `StructuralFacts` in `polaris-dvc-hwpx/src/types.rs` and
 populate it from `open_bytes` / `section::parse_section`.
 
 ## Extended vs DvcStrict profiles
