@@ -7,7 +7,7 @@ update, or verify cases.
 **Do not edit these files by hand.** Regenerate via:
 
 ```sh
-POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-rhwpdvc-core --test golden
+POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden
 ```
 
 Each case directory has:
