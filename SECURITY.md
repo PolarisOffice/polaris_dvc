@@ -1,105 +1,65 @@
-# Security policy
+# 보안 정책
 
-polaris_dvc parses HWPX files — a ZIP-based container of
-user-authored XML. Because documents are often received from
-untrusted sources (email, downloads, ingest pipelines), parser
-correctness has security implications. This document covers what
-we consider a vulnerability, how to report one, and what to expect
-after reporting.
+`polaris_dvc` 는 HWPX 파일 — ZIP 기반 컨테이너 안에 사용자 작성 XML 이 들어 있는 포맷 — 을 파싱합니다. 이 문서들은 이메일, 다운로드, 수집 파이프라인 등 **신뢰할 수 없는 경로**를 통해 들어오는 경우가 많기 때문에 파서의 올바른 동작은 곧 보안 이슈로 이어집니다. 이 문서는 무엇을 취약점으로 간주하는지, 어떻게 신고하시면 되는지, 신고 후 어떤 흐름으로 진행되는지를 안내합니다.
 
-## Supported versions
+## 지원 버전
 
-Pre-1.0 (`0.x`): only the latest `0.x` release on `main` receives
-security fixes. Pin a specific version only if you accept that any
-vulnerability found in older releases will be fixed forward, not
-backported.
+1.0 이전 (`0.x`): `main` 에 있는 최신 `0.x` 릴리스만 보안 수정을 받습니다. 특정 버전을 고정해서 쓰실 경우 구버전에서 발견된 취약점은 backport 가 아니라 **앞으로 나올 버전에서 수정**되는 정책임을 감안해 주세요.
 
-Once 1.0 is tagged, this section will be updated with the
-supported-version window.
+1.0 태그 이후에는 지원 버전 윈도우를 이 섹션에 명시하겠습니다.
 
-## Scope — what counts as a vulnerability
+## 범위 — 무엇을 취약점으로 보나
 
-In scope:
+**범위 안**:
 
-- **Memory / resource safety in parsers.** Crashes, panics, infinite
-  loops, unbounded allocation, stack overflow, or quadratic blow-up
-  triggered by a malformed HWPX, ZIP container, or rule JSON.
-- **Zip-slip / path traversal.** Any HWPX whose internal ZIP entries
-  cause writes or reads outside the intended in-memory scope. (We
-  don't write extracted files to disk in the library, but report it
-  anyway — defense in depth.)
-- **Information disclosure from the rule spec.** A malicious
-  `spec.json` that causes the engine to leak unrelated file
-  contents, environment variables, or network state.
-- **WASM sandbox escapes** in the `polaris-dvc-wasm` crate or
-  its web demo — e.g., a validator input that causes the wasm
-  module to access host resources it shouldn't.
-- **Integer overflow / under-read / under-write** in the OWPML
-  parser (`polaris-dvc-hwpx`).
+- **파서의 메모리/리소스 안전성**. 잘못된 HWPX, ZIP 컨테이너, 규칙 JSON 에 의해 발생하는 크래시, 패닉, 무한 루프, 무한 메모리 할당, 스택 오버플로, quadratic blow-up.
+- **Zip-slip / 경로 탈출**. HWPX 의 내부 ZIP 엔트리가 의도된 메모리 범위 밖에 쓰기나 읽기를 유발하는 경우. (라이브러리 쪽에서는 파일 시스템에 추출하지 않지만 defense-in-depth 차원에서 신고 받습니다.)
+- **규칙 spec 을 통한 정보 유출**. 악의적인 `spec.json` 이 엔진을 통해 무관한 파일 내용, 환경 변수, 네트워크 상태를 누출시키는 경우.
+- **WASM 샌드박스 탈출**. `polaris-dvc-wasm` 이나 웹 데모에서 validator 입력이 wasm 모듈로 하여금 접근하면 안 되는 호스트 리소스에 접근하게 만드는 경우.
+- **OWPML 파서의 정수 오버플로 / under-read / under-write** (`polaris-dvc-hwpx`).
 
-Out of scope:
+**범위 밖**:
 
-- Correctness divergence from upstream hancom-io/dvc. File those
-  as regular issues tagged `parity`.
-- "This file is spec-invalid but we don't emit an error for it."
-  Same — that's a `parity` or `feature` issue.
-- Vulnerabilities in third-party dependencies that don't materially
-  affect polaris usage. File those upstream; we track via
-  Dependabot.
-- Issues in the reference snapshot at `third_party/dvc-upstream/`.
-  That's a read-only copy of external source; report to
-  <https://github.com/hancom-io/dvc>.
+- 한컴 DVC 와의 동작 차이 (correctness divergence). 일반 이슈로 `parity` 라벨을 달아 올려주세요.
+- "이 파일은 스펙 위반인데 우리가 에러로 잡지 못한다" 류의 커버리지 이슈 — 역시 `parity` 또는 `feature` 라벨의 일반 이슈입니다.
+- 써드파티 의존성의 취약점 중 polaris 사용에 실질적 영향이 없는 것. 해당 프로젝트에 직접 신고해주세요. 저희는 Dependabot 으로 트래킹합니다.
+- `third_party/dvc-upstream/` 에 있는 참조 스냅샷의 이슈. 이 디렉토리는 외부 소스의 읽기 전용 복사본이므로 <https://github.com/hancom-io/dvc> 쪽으로 신고 부탁드립니다.
 
-## How to report
+## 신고 방법
 
-**Please do not open a public GitHub issue for security matters.**
+**보안 관련 사항은 GitHub 공개 이슈로 올리지 말아주세요.**
 
-Use **GitHub's private vulnerability reporting**:
+**GitHub 의 private vulnerability reporting** 기능을 이용해 주세요:
 
-1. Go to <https://github.com/PolarisOffice/polaris_dvc/security>.
-2. Click **"Report a vulnerability"**.
-3. Fill in the template. Attach a proof-of-concept HWPX / rule
-   JSON if you have one.
+1. <https://github.com/PolarisOffice/polaris_dvc/security> 접속
+2. **"Report a vulnerability"** 클릭
+3. 양식 작성. 가능하시면 재현용 HWPX / 규칙 JSON 을 첨부해주세요.
 
-This creates a private thread visible only to project maintainers
-and the reporter. GitHub handles the CVE lifecycle if the report is
-confirmed.
+이렇게 하면 프로젝트 메인테이너와 신고자만 볼 수 있는 비공개 스레드가 생성됩니다. 리포트가 확정되면 CVE 할당 등 수명 주기는 GitHub 가 처리합니다.
 
-If GitHub's form is unavailable for some reason, open an issue
-titled "security contact request" (no details in the body) and we
-will reach out to arrange a secure channel.
+GitHub 양식을 어떤 이유로든 쓰실 수 없으면, "security contact request" 라는 제목으로 (본문에는 세부 내용 없이) 공개 이슈를 열어주세요. 안전한 채널을 따로 마련해서 연락드리겠습니다.
 
-## What to expect
+## 이후 흐름
 
-- **Acknowledgement:** within 5 business days of receipt.
-- **Initial triage:** within 14 days — we'll either accept the
-  report with a rough severity estimate or explain why we don't
-  consider it a vulnerability.
-- **Fix timeline:** no fixed SLA pre-1.0, but typical turnaround
-  for confirmed high-severity issues is 2–6 weeks. We'll keep the
-  reporter informed.
-- **Disclosure:** after a fix ships, we'll publish a GitHub Security
-  Advisory with the CVE (if GitHub assigns one), a summary, and
-  credit to the reporter unless they request anonymity.
+- **수신 확인**: 접수 후 영업일 기준 5일 이내.
+- **초기 분류**: 14일 이내 — 보고를 받아들이고 대략적 심각도를 추정해드리거나, 취약점이 아니라고 판단되는 이유를 설명드립니다.
+- **수정 타임라인**: 1.0 이전에는 고정 SLA 는 없지만, 확정된 고심각도 이슈의 경우 일반적으로 2~6주 내 수정이 나갑니다. 진행 상황은 신고자에게 지속적으로 공유합니다.
+- **공개**: 수정이 배포된 뒤 GitHub Security Advisory 를 발행합니다. CVE 가 할당된 경우 CVE 번호, 요약, 그리고 신고자 크레딧 (익명 요청 시 제외) 을 포함합니다.
 
-## Safe-harbor
+## Safe-harbor (선의의 연구자 보호)
 
-We will not pursue legal action against researchers who:
+아래 조건을 지키시는 연구자에게는 법적 조치를 취하지 않습니다:
 
-- Make a good-faith effort to follow this policy.
-- Avoid privacy violations, data destruction, and service
-  disruption to non-polaris systems during testing.
-- Do not publicly disclose the vulnerability before a fix is
-  released, unless we've agreed to a coordinated-disclosure date.
+- 이 정책을 선의로 따르려 하신 경우.
+- 테스트 중 polaris 외의 시스템에 대해 프라이버시 침해, 데이터 파괴, 서비스 중단을 피하신 경우.
+- 수정이 배포되기 전에 취약점을 공개하지 않으신 경우 (저희와 조율 공개 일정을 협의한 경우는 예외).
 
-## Scope cross-reference
+## Crate 별 공격 표면 참고
 
-For the attack surface of each crate:
-
-| crate | untrusted input? | notes |
+| crate | 신뢰할 수 없는 입력? | 비고 |
 |---|---|---|
-| `polaris-dvc-hwpx` | yes (HWPX bytes) | primary parser — most exposure |
-| `polaris-dvc-core` | yes (rule JSON, HWPX via hwpx crate) | secondary — processes outputs of hwpx |
-| `polaris-dvc-format` | yes (bytes, before parser dispatch) | sniff + route |
-| `polaris-dvc-cli` | yes (argv, stdin, files) | CLI flag parser + file I/O |
-| `polaris-dvc-wasm` | yes (JS → WASM boundary) | browser / Node consumers |
+| `polaris-dvc-hwpx` | 예 (HWPX 바이트) | 1차 파서 — 노출 가장 큼 |
+| `polaris-dvc-core` | 예 (규칙 JSON, HWPX via hwpx crate) | 2차 — hwpx 파서의 출력을 처리 |
+| `polaris-dvc-format` | 예 (파서 디스패치 전 바이트) | 포맷 감지 + 라우팅 |
+| `polaris-dvc-cli` | 예 (argv, stdin, 파일) | CLI 플래그 파서 + 파일 I/O |
+| `polaris-dvc-wasm` | 예 (JS → WASM 경계) | 브라우저 / Node 소비자 |
