@@ -65,7 +65,7 @@ jobs:
       artifact_name: ${{ steps.publish.outputs.artifact_name }}
     steps:
       - name: Checkout upstream hancom-io/dvc
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: hancom-io/dvc
           ref: ${{ env.UPSTREAM_REF }}
@@ -584,7 +584,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout polaris
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve artifact source (fresh build vs reused run)
         id: art
