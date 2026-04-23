@@ -122,7 +122,7 @@ const report = validate(hwpxBytes, specObject, {
 
 ## 상태
 
-`testdata/golden/` 의 회귀 테스트 44 케이스가 엔진 동작의 기준점입니다. 한컴 DVC 와의 바이트 parity 검증은 Windows 환경에서 개별 진행 중이고, 남은 작업은 [`docs/parity-roadmap.md`](docs/parity-roadmap.md) 에 정리돼 있어요.
+`testdata/golden/` 의 회귀 테스트 44 케이스가 엔진 동작의 기준점입니다. 한컴 DVC 와의 parity 는 `--dvc-strict` 모드에서 **출력 모양(shape) 호환** — 같은 JID 집합·같은 JSON/XML 필드 레이아웃 — 수준으로 맞춰 두었어요. 리포에서 한컴 DVC 바이너리를 빌드하거나 배포하지는 않습니다 ([`docs/dvc-parity-handoff.md`](docs/dvc-parity-handoff.md) 참고). 남은 커버리지 작업은 [`docs/parity-roadmap.md`](docs/parity-roadmap.md) 에 정리돼 있어요.
 
 ## 문서
 

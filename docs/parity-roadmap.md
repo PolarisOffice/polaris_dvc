@@ -36,19 +36,24 @@ CLI: `--dvc-strict`. WASM: `validate(hwpx, spec, { dvcStrict: true })`.
 
 ## P0 — Parity를 주장하려면 반드시
 
-### 1. DVC.exe 바이트-정합성 검증
-**왜**: 모든 parity 작업의 "pass" 기준선. 없으면 우리가 "구현했다"고
-말하는 것들도 업스트림과 다를 수 있다.
+### 1. DVC.exe 바이트-정합성 검증 — ❌ 범위 외
+**결정**: 이 리포는 업스트림 DVC 바이너리를 **빌드·패키징·배포하지
+않는다** (사유: [`dvc-parity-handoff.md`](dvc-parity-handoff.md)).
+따라서 CI 상의 "DVC.exe 출력 vs polaris 출력" 바이트 비교 작업은
+공식 로드맵에서 제외했다.
 
-**할 일**:
-- Windows PC에서 `scripts\parity-windows.ps1 -WriteExpected` 실행
-- 바뀐 `testdata/golden/*/expected.json` 커밋 → polaris 엔진이 실제
-  DVC.exe 출력을 따라가도록 수정
+대신 parity 의 실질적 기준선은 **출력 모양(shape) 정합성** 으로
+이동했다:
+- `--dvc-strict` 모드에서 업스트림이 실제 체크하는 JID 만 통과
+- 출력 JSON/XML 필드명·순서·조건부 field 는 upstream
+  `DVCOutputJson.cpp` 와 동일
+- polaris-only 힌트 필드 (ErrorString, FileLabel, ByteOffset) 는
+  `Ctx::push` 에서 strict-mode 시 지움
 
-**현재**: 스크립트 준비 완료 (`scripts/parity-windows.ps1`), 로드맵
-작성자 환경에서 미실행.
-
-**예상 작업량**: Windows 환경에서 초기 1~2 커밋, 이후 이터레이션 N회.
+이 기준선은 `cargo test -p polaris-dvc-core --test golden` 으로
+회귀 보호된다 (44 케이스). 바이트-정합성 증명이 필요한 소비자는
+로컬 Windows 환경에서 upstream 을 직접 빌드·실행해 비교할 수 있지만,
+그 파이프라인은 이 리포에서 관리하지 않는다.
 
 ### 2. Table 카테고리 전체 확장 — ⏳ 진행 중
 **왜**: 한국 공공문서의 절대 다수가 표를 가짐. 현재 우린 border +
@@ -233,19 +238,20 @@ Upstream은 여러 범위 합집합을 지원할 수 있음 (확인 필요). 현
    (`error_codes.rs::jid`). 숫자 하드코딩 금지.
 2. **Golden 케이스를 먼저**: 구현 전 `testdata/golden/<case>/`에
    실패하는 새 케이스를 먼저 커밋. TDD.
-3. **DVC.exe 대조 주기적으로**: 한 덩어리 끝내면 `parity-windows.ps1
-   -WriteExpected` 돌려 우리 출력이 upstream과 여전히 맞는지 확인.
-4. **P0 1번 해결 전까지는 `expected.json`이 우리 엔진 출력**: 그게
-   진짜 parity인지는 검증 전. P0-1 이후부터 진짜 parity.
+3. **upstream `Checker.cpp` / `DVCOutputJson.cpp` 와 비교**:
+   `third_party/dvc-upstream/Source/` 에서 대응되는 케이스를 찾아
+   분기·필드·drop 조건이 일치하도록 구현. 이 리포에서는 DVC.exe 를
+   빌드·실행하지 않으므로, parity 검증은 **소스 대조 + 회귀 골든** 조합이다.
+4. **`expected.json` 은 폴라리스 엔진 출력 기반**: 실제 DVC.exe 와 바이트-
+   일치까지 가려면 외부에서 자체 검증이 필요하다 ([`dvc-parity-handoff.md`](dvc-parity-handoff.md)).
 
 ---
 
 ## 추정 총 작업량
 
-P0 전체: ~10 커밋, 1~2일 집중
+P0 전체: ~8 커밋, 1~2일 집중 (P0-1 은 범위 외)
 P1 전체: ~10 커밋, 1~2일
 P2 전체: ~8 커밋, 2~3일
 P3 전체: 지속적으로 2~4 커밋씩
 
-→ P0 완료 시점이 "DVC parity 실질적 달성" 이정표. P1까지 가면 실무에서
-DVC.exe 대체 가능 수준.
+→ P2 정도까지 가면 실무에서 DVC.exe 대체 가능 수준이다.

@@ -82,7 +82,7 @@ POLARIS_REGEN_FIXTURES=1 cargo test -p polaris-dvc-core --test golden
 
 ## 한컴 DVC 와의 Parity
 
-`--dvc-strict` 프로파일에서 한컴 DVC 의 `DVC.exe` 와 **바이트 수준 호환**을 목표로 합니다. [`docs/parity-roadmap.md`](docs/parity-roadmap.md) 에 JID 별 커버리지가 정리되어 있고, [`docs/windows-parity-howto.md`](docs/windows-parity-howto.md) 는 Windows 에서 `DVC.exe` 를 돌려 `expected.json` 을 새로 만드는 절차를 안내합니다. 기여에 Windows 환경이 필수는 아니에요 — 리포에 들어 있는 golden 테스트는 Linux/macOS 에서도 돕니다. 다만 Windows 환경이 있으시고 parity 갭을 메우는 데 도움을 주실 수 있다면 그 문서를 참고해주세요.
+`--dvc-strict` 프로파일에서 한컴 DVC 와 **출력 모양(shape) 호환**을 목표로 합니다 — 같은 JID 집합을 같은 JSON/XML 필드 레이아웃으로 뱉는 수준. [`docs/parity-roadmap.md`](docs/parity-roadmap.md) 에 JID 별 커버리지가 정리되어 있고, 전체 정책과 "왜 바이트-정합성까지는 가지 않는지" 는 [`docs/dvc-parity-handoff.md`](docs/dvc-parity-handoff.md) 에 있습니다. 이 리포는 한컴 DVC 를 빌드·배포하지 않으므로 기여에도 Windows 환경은 필요하지 않아요 — golden 테스트는 Linux/macOS 에서 전부 돕니다.
 
 ## 행동 강령
 

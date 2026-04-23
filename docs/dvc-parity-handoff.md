@@ -1,35 +1,61 @@
 # DVC parity — current state
 
-`polaris_dvc` targets **byte-exact output parity** with upstream
-`hancom-io/dvc` when run under `--dvc-strict`. The parity contract
-is: given the same `(hwpx, spec.json)` pair, `polaris-dvc` and
-`DVC.exe` produce identical `expected.json` output.
+`polaris_dvc` targets **output-shape parity** with upstream
+`hancom-io/dvc` when run under `--dvc-strict`: given the same
+`(hwpx, spec.json)` pair, both tools emit the same JID set in the
+same JSON/XML field layout.
 
-This document records where we stand on achieving that contract,
-why the verification pipeline is partially blocked, and what would
-unblock it.
+**We don't go further than shape parity.** Byte-exact cross-
+verification against a running `DVC.exe` is out of scope for this
+repo, and we don't build, package, or distribute any upstream DVC
+binary. See [Scope & policy](#scope--policy) below.
 
-## Summary
+## Scope & policy
+
+The upstream project lives at `hancom-io/dvc` and is Apache-2.0
+licensed. We retain a read-only snapshot of its source at
+`third_party/dvc-upstream/` strictly for reference: the `JsonModel.h`
+constant table drives our generated `jid_registry.rs`, and
+`Source/Checker.cpp` is how we know which JIDs upstream actually
+implements (vs. the many that are `break;` no-ops — see
+[`parity-roadmap.md`](parity-roadmap.md)).
+
+What we don't do:
+
+- **No upstream build in CI.** There's no workflow in this repo that
+  clones `hancom-io/dvc`, runs MSBuild on `DVCModel.sln`, or produces
+  any upstream `.exe` / `.dll`.
+- **No redistribution of compiled upstream code.** Release artifacts
+  ship only polaris-authored crates (`polaris-dvc-*`) and the WASM
+  bundle. The repo itself contains no checked-in upstream binaries.
+- **No scripts that automate upstream building.** A previous iteration
+  had `scripts/parity-windows.ps1` and friends plus a
+  `dvc-parity.yml` workflow; both were removed when we committed to
+  the policy above.
+
+What shape parity still gives us:
 
 | Piece | Status |
 |---|---|
 | Rust-side strict-mode output (JID gating, field order) | **working** — matches the shape upstream emits |
 | Golden fixtures (44 cases, auto-generated) | **working** — checked into `testdata/golden/` |
-| `DVC.exe` running against the same fixtures on Windows | **blocked** — see below |
-| CI workflow (`.github/workflows/dvc-parity.yml`) | **scripted but not run green** — waits on the block |
-| Cross-verified "bit-for-bit matches upstream" evidence | **pending** |
+| `--dvc-strict` CLI / WASM flag | **working** — polaris-only hint fields cleared at push time, upstream-compatible JIDs only |
 
-We can't sign off on *provable* byte-exact parity until the Windows
-side runs successfully against our fixtures. The engine is built to
-the parity contract, but the third-party loop is currently open.
+If someone outside this repo later wants to prove byte-exact
+agreement with `DVC.exe` on a Windows host, they're free to run
+polaris under `--dvc-strict` and diff the output against a locally-
+built upstream binary. The infrastructure for that is their
+problem, not ours.
 
-## What blocks Windows-side verification
+## Reference: why byte-exact parity is hard regardless
 
-The upstream `DVC.exe` binary links against `hwpx-owpml-model`, a
-separate Hancom library that parses HWPX into the OWPML object tree
-before `DVC.exe`'s rule engine walks it. Running `DVC.exe` under
-`cdb` on a Windows 11 VM against every real HWPX we have produces
-the same crash:
+This section is historical context — preserved for anyone who'd want
+to resurrect binary-level parity work later. It doesn't imply we'll
+do that work.
+
+When we did run `DVC.exe` on a Windows 11 VM against every
+Hancom-Docs-produced HWPX we had (empty documents, plain text,
+3 MB press releases), the same crash reproduced:
 
 ```
 DVCModel!OWPMLReaderModule::OWPMLReader::FindPageInfo+0xb6
@@ -41,16 +67,15 @@ At the crash frame, a `pSegArray` pointer is `NULL` and standard
 error carries `"Unimplemented error for refID"` from the OWPML
 library just before the dereference. The pattern — library logs an
 unsupported refID, returns with a NULL array, caller iterates
-blindly — reproduces on every Hancom-Docs-produced HWPX we have:
-empty documents, plain text, and a 3 MB press release all hit the
-same frame. The `!analyze -v` automatic analyzer mis-attributed the
-crash to a shallower `CheckCharShapeToCheckList` frame; `.ecxr; k`
-on the crash thread surfaces the real `FindPageInfo` site.
+blindly — reproduces across every Hancom-Docs HWPX we tested.
+`!analyze -v` mis-attributes the crash to a shallower
+`CheckCharShapeToCheckList` frame; `.ecxr; k` on the crash thread
+surfaces the real `FindPageInfo` site.
 
-The crash is not triggered by our rule JSON (upstream's own
-`sample/test.json` reproduces it identically) and not triggered by
-our HWPX containers being malformed (they open cleanly in Hangul
-Office). The combination that does **not** crash is `{}` spec + any
+The crash is **not** triggered by our rule JSON (upstream's own
+`sample/test.json` reproduces it identically) and **not** triggered
+by our HWPX containers being malformed (they open cleanly in Hangul
+Office). The combination that does not crash is `{}` spec + any
 HWPX, which early-returns from `CheckList::parsing` before
 `FindPageInfo` is reached.
 
@@ -61,48 +86,20 @@ that the library recognizes syntactically but doesn't implement, so
 it bails out leaving a NULL segment array that `FindPageInfo`
 dereferences.
 
-## Paths forward
+Paths that could have unblocked this (none taken):
 
-1. **Test with a desktop Hangul Office HWPX.** If the crash
-   disappears, our fixtures are the proximate cause and we can
-   regenerate them from desktop output. 30-day trial is available
-   from Hancom.
-
-2. **Patch or fork `hwpx-owpml-model`.** Add a guard that returns
-   an empty segment array safely when an unsupported refID is
-   encountered. Out-of-scope for the polaris repo proper; would
-   have to live upstream or in a fork.
-
-3. **Skip byte-exact parity; verify at the output-structure
-   level.** If bit-for-bit against `DVC.exe` turns out to be
-   unreachable, we can still guarantee that `--dvc-strict` emits
-   the same JID set and field shape as upstream for the documents
-   DVC.exe *can* process. This is the pragmatic fallback and would
-   retitle the goal from "parity" to "DVC-compatible output."
-
-Path 1 is the cheapest test. Path 3 is what we fall back to if
-the blocker proves intractable.
-
-## Verification pipeline (when unblocked)
-
-The workflow at `.github/workflows/dvc-parity.yml` builds the
-upstream DVC from source on a Windows runner, runs it against each
-`testdata/golden/<nn>/doc.hwpx`, and diffs the output against the
-committed `expected.json`. It is parameterized to run on
-`workflow_dispatch` so we don't spend CI minutes on it routinely.
-When we have a working Windows-side setup, a single manual trigger
-produces the parity evidence report.
-
-For developers who want to run the same loop locally, see
-[`windows-parity-howto.md`](windows-parity-howto.md) (clean-room
-procedure) and [`utm-windows-setup.md`](utm-windows-setup.md)
-(Apple Silicon via UTM).
+1. Test with a desktop Hangul Office HWPX. If the crash
+   disappears, the fixtures are the proximate cause and we could
+   regenerate from desktop output.
+2. Patch or fork `hwpx-owpml-model`. Would have to live upstream
+   or in a fork — out of scope for this repo.
+3. What we settled on: skip byte-exact parity entirely, verify at
+   the output-shape level via `--dvc-strict`. This is what this
+   document now describes.
 
 ## Related reading
 
 - [`cli-compat.md`](cli-compat.md) — flag-level compatibility with
   upstream `CommandParser.cpp`
 - [`parity-roadmap.md`](parity-roadmap.md) — prioritized roadmap
-  for closing the remaining feature-parity gaps in the engine
-- [`dvc-parity-status.md`](dvc-parity-status.md) — build-attempt
-  history of the upstream DVC on Windows
+  for closing remaining feature-parity gaps in the engine

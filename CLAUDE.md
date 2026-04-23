@@ -33,7 +33,7 @@ polaris_dvc/
 ├── schemas/jsonFullSpec.json    upstream rule schema sample (unchanged copy)
 ├── testdata/golden/<nn>_.../    (doc.hwpx, spec.json, expected.json) triples
 ├── third_party/dvc-upstream/    READ-ONLY upstream snapshot, pinned commit
-├── scripts/                     parity-windows.ps1, diff-dvc-outputs.sh, push.sh
+├── scripts/                     push.sh (PAT-aware git push wrapper)
 └── docs/                        parity-roadmap, jid-registry, golden-tests, …
 ```
 
@@ -332,9 +332,11 @@ When adding a new checker:
 Current prioritized status lives in `docs/parity-roadmap.md`. As of this
 file's last update:
 
-- **P0-1**: DVC.exe byte-exact parity — scripted (`scripts/parity-windows.ps1`)
-  but not yet run on a Windows host. Deferred until a Windows PC is
-  available.
+- **P0-1**: DVC.exe byte-exact parity — **out of scope.** This repo
+  does not build, package, or distribute any upstream DVC binary.
+  Parity is tracked at the output-shape level via `--dvc-strict`
+  (same JID set, same JSON/XML field layout) and the 44-case golden
+  fixture suite. See `docs/dvc-parity-handoff.md`.
 - **P0-2**: Table category expansion — in progress. Currently covered:
   `border`, `size`, `margin`, `treatAsChar`, `table-in-table`, `bgfill`
   (type/facecolor/pattoncolor/pattontype). Still to do: `caption`,
@@ -345,7 +347,9 @@ file's last update:
   XML output format, DVC bug-compat option.
 
 `docs/parity-roadmap.md` has the detailed breakdown with file pointers.
-`docs/dvc-parity-status.md` tracks the Windows-side build attempts.
+`docs/dvc-parity-handoff.md` explains why binary-level parity is out of
+scope and records the `FindPageInfo` crash analysis for historical
+reference.
 
 ## When in doubt
 
