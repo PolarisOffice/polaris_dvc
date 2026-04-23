@@ -1515,14 +1515,19 @@ fn integrity_violation(
 /// #2 `charPrIDRef` / `paraPrIDRef` / `styleIDRef` → missing in header.
 fn check_integrity_id_refs(ctx: &mut Ctx) -> bool {
     let doc = ctx.doc;
-    // Snapshot reference ids so we don't hold &ctx.doc while pushing.
+    // Snapshot every orphan with enough location context to anchor it
+    // back to a specific section XML + paragraph offset. The web demo's
+    // click-to-locate uses `file_label` + `byte_offset` to scroll the
+    // viewer to the exact element that holds the dangling IDRef.
     struct Orphan {
         code: ErrorCode,
         msg: String,
+        section_idx: usize,
+        para_id: u32,
     }
     let mut orphans: Vec<Orphan> = Vec::new();
 
-    for section in &doc.sections {
+    for (si, section) in doc.sections.iter().enumerate() {
         for para in &section.paragraphs {
             if doc.header.para_shape(para.para_pr_id_ref).is_none() {
                 orphans.push(Orphan {
@@ -1531,6 +1536,8 @@ fn check_integrity_id_refs(ctx: &mut Ctx) -> bool {
                         "paragraph {} references paraPrIDRef={} with no matching <hh:paraPr>",
                         para.id, para.para_pr_id_ref
                     ),
+                    section_idx: si,
+                    para_id: para.id,
                 });
             }
             if para.style_id_ref != 0
@@ -1542,6 +1549,8 @@ fn check_integrity_id_refs(ctx: &mut Ctx) -> bool {
                         "paragraph {} references styleIDRef={} with no matching <hh:style>",
                         para.id, para.style_id_ref
                     ),
+                    section_idx: si,
+                    para_id: para.id,
                 });
             }
             for run in &para.runs {
@@ -1552,6 +1561,8 @@ fn check_integrity_id_refs(ctx: &mut Ctx) -> bool {
                             "run in paragraph {} references charPrIDRef={} with no matching <hh:charPr>",
                             para.id, run.char_pr_id_ref
                         ),
+                        section_idx: si,
+                        para_id: para.id,
                     });
                 }
             }
@@ -1559,12 +1570,56 @@ fn check_integrity_id_refs(ctx: &mut Ctx) -> bool {
     }
 
     for o in orphans {
-        let v = integrity_violation(ctx, o.code, o.msg);
+        let bytes = ctx
+            .doc
+            .structural
+            .section_xml_bytes
+            .get(o.section_idx)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let byte_offset = find_para_byte_offset(bytes, o.para_id);
+        let mut v = integrity_violation(ctx, o.code, o.msg);
+        v.file_label = format!("section{}", o.section_idx);
+        v.byte_offset = byte_offset;
         if !ctx.push(v) {
             return false;
         }
     }
     true
+}
+
+/// Best-effort: locate the byte offset of a `<hp:p id="{para_id}" …>`
+/// opening tag in section XML. Returns 0 when no match is found (the
+/// caller treats 0 as "no precise location," which makes click-to-
+/// locate open the file without scrolling to a specific line).
+///
+/// Not exhaustive — same para_id can legitimately appear many times
+/// in the file (table cells carry `id="0"` repeatedly). This hits the
+/// first occurrence, which is still close to the real problem area
+/// in practice.
+fn find_para_byte_offset(xml: &[u8], para_id: u32) -> u32 {
+    let needle = format!("id=\"{para_id}\"");
+    let needle_bytes = needle.as_bytes();
+    let open_tag = b"<hp:p ";
+    let mut i = 0;
+    while i + open_tag.len() < xml.len() {
+        if xml[i..].starts_with(open_tag) {
+            let scan_end = (i + 500).min(xml.len());
+            let tag_end = xml[i..scan_end]
+                .iter()
+                .position(|&b| b == b'>')
+                .map(|p| i + p)
+                .unwrap_or(scan_end);
+            let tag = &xml[i..tag_end];
+            if tag.windows(needle_bytes.len()).any(|w| w == needle_bytes) {
+                return i as u32;
+            }
+            i = tag_end;
+        } else {
+            i += 1;
+        }
+    }
+    0
 }
 
 /// #3 Paragraph with runs that carry text but no `<hp:linesegarray>`
@@ -1592,7 +1647,15 @@ fn check_integrity_empty_lineseg(ctx: &mut Ctx) -> bool {
     }
 
     for h in hits {
-        let v = integrity_violation(
+        let bytes = ctx
+            .doc
+            .structural
+            .section_xml_bytes
+            .get(h.section_idx)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let byte_offset = find_para_byte_offset(bytes, h.para_id);
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_EMPTY_LINESEG,
             format!(
@@ -1600,6 +1663,8 @@ fn check_integrity_empty_lineseg(ctx: &mut Ctx) -> bool {
                 h.section_idx, h.para_id
             ),
         );
+        v.file_label = format!("section{}", h.section_idx);
+        v.byte_offset = byte_offset;
         if !ctx.push(v) {
             return false;
         }
@@ -1616,29 +1681,31 @@ fn check_integrity_structural_facts(ctx: &mut Ctx) -> bool {
 
     // #4a — mimetype must be ZIP entry #0.
     if !s.mimetype_is_first {
-        let v = integrity_violation(
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_MIMETYPE_POSITION,
             "mimetype is not the first ZIP entry (HWPX / OCF spec requires position 0)",
         );
+        v.file_label = "mimetype".to_string();
         if !ctx.push(v) {
             return false;
         }
     }
     // #4b — mimetype must be STORED (uncompressed).
     if !s.mimetype_stored {
-        let v = integrity_violation(
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_MIMETYPE_COMPRESSED,
             "mimetype ZIP entry is compressed; spec requires STORED",
         );
+        v.file_label = "mimetype".to_string();
         if !ctx.push(v) {
             return false;
         }
     }
     // #4c — content must be exactly `application/hwp+zip`.
     if ctx.doc.mimetype != "application/hwp+zip" {
-        let v = integrity_violation(
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_MIMETYPE_CONTENT,
             format!(
@@ -1646,6 +1713,7 @@ fn check_integrity_structural_facts(ctx: &mut Ctx) -> bool {
                 ctx.doc.mimetype
             ),
         );
+        v.file_label = "mimetype".to_string();
         if !ctx.push(v) {
             return false;
         }
@@ -1684,11 +1752,15 @@ fn check_integrity_structural_facts(ctx: &mut Ctx) -> bool {
         .collect();
     orphan_refs.sort();
     for r in orphan_refs {
-        let v = integrity_violation(
+        // The dangling IDRef lives in section XML; the manifest check
+        // is about the content.hpf side. We anchor at content.hpf so
+        // clicking navigates to where the id catalog should have been.
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_BINDATA_REF_MISSING_MANIFEST,
             format!("section references binaryItemIDRef={r:?} with no matching manifest item"),
         );
+        v.file_label = "content.hpf".to_string();
         if !ctx.push(v) {
             return false;
         }
@@ -1702,11 +1774,12 @@ fn check_integrity_structural_facts(ctx: &mut Ctx) -> bool {
         .collect();
     missing_files.sort();
     for href in missing_files {
-        let v = integrity_violation(
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_BINDATA_MANIFEST_MISSING_FILE,
             format!("manifest lists BinData href={href:?} but the ZIP has no such entry"),
         );
+        v.file_label = "content.hpf".to_string();
         if !ctx.push(v) {
             return false;
         }
@@ -1810,7 +1883,11 @@ fn check_integrity_duplicate_ids(ctx: &mut Ctx) -> bool {
 
     for (code, dup_ids, label) in checks {
         for id in dup_ids {
-            let v = integrity_violation(ctx, code, format!("duplicate {label} id={id}"));
+            // All header tables (charPr / paraPr / borderFill / style /
+            // numbering / bullet / face) live inside `<hh:head>` — so
+            // click-to-locate lands the user on header.xml.
+            let mut v = integrity_violation(ctx, code, format!("duplicate {label} id={id}"));
+            v.file_label = "header.xml".to_string();
             if !ctx.push(v) {
                 return false;
             }
@@ -1830,23 +1907,28 @@ fn check_integrity_border_fill_refs(ctx: &mut Ctx) -> bool {
     use std::collections::HashSet;
     let known: HashSet<u32> = h.border_fills.iter().map(|b| b.id).collect();
 
-    let mut orphans: Vec<(u32, u32)> = Vec::new(); // (table_id, bf_idref)
-    for section in &ctx.doc.sections {
+    let mut orphans: Vec<(usize, u32, u32)> = Vec::new(); // (section_idx, table_id, bf_idref)
+    for (si, section) in ctx.doc.sections.iter().enumerate() {
         for table in &section.tables {
             if table.border_fill_id_ref != 0 && !known.contains(&table.border_fill_id_ref) {
-                orphans.push((table.id, table.border_fill_id_ref));
+                orphans.push((si, table.id, table.border_fill_id_ref));
             }
         }
     }
 
-    for (tid, bf) in orphans {
-        let v = integrity_violation(
+    for (si, tid, bf) in orphans {
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_ORPHAN_BORDER_FILL_IDREF,
             format!(
                 "table id={tid} references borderFillIDRef={bf} with no matching <hh:borderFill>"
             ),
         );
+        // The dangling IDRef is on the `<hp:tbl>` element in the
+        // section XML; the target record would be in header.xml.
+        // Navigate to the section side so the user sees the bad ref
+        // in context.
+        v.file_label = format!("section{si}");
         if !ctx.push(v) {
             return false;
         }
@@ -2062,7 +2144,10 @@ fn check_integrity_font_refs(ctx: &mut Ctx) -> bool {
     }
 
     for m in misses {
-        let v = integrity_violation(
+        // Both sides of this ref live in header.xml (`<hh:charPr>`
+        // and the `<hh:fontface>` blocks), so that's where the user
+        // wants to land.
+        let mut v = integrity_violation(
             ctx,
             jid::INTEGRITY_ORPHAN_FONT_REF,
             format!(
@@ -2073,6 +2158,7 @@ fn check_integrity_font_refs(ctx: &mut Ctx) -> bool {
                 lang_of(m.slot)
             ),
         );
+        v.file_label = "header.xml".to_string();
         if !ctx.push(v) {
             return false;
         }

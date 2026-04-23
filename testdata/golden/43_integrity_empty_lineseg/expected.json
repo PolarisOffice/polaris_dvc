@@ -14,6 +14,8 @@
     "UseStyle": false,
     "IsInShape": false,
     "UseHyperlink": false,
-    "ErrorString": "section 0 paragraph 0 has text but empty lineSegArray"
+    "ErrorString": "section 0 paragraph 0 has text but empty lineSegArray",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

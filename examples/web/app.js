@@ -773,6 +773,9 @@ function fileLabelToZipPath(label) {
     "content.hpf": "Contents/content.hpf",
     "settings.xml": "Contents/settings.xml",
     "version.xml": "Contents/version.xml",
+    // ZIP root entries — used by the integrity checks for mimetype
+    // invariants (JID 11010–11012).
+    mimetype: "mimetype",
   };
   if (known[label]) return known[label];
   const secMatch = /^section(\d+)$/.exec(label);

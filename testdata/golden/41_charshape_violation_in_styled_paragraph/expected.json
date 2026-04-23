@@ -14,7 +14,9 @@
     "UseStyle": false,
     "IsInShape": false,
     "UseHyperlink": false,
-    "ErrorString": "paragraph 0 references styleIDRef=5 with no matching <hh:style>"
+    "ErrorString": "paragraph 0 references styleIDRef=5 with no matching <hh:style>",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   },
   {
     "CharIDRef": 0,

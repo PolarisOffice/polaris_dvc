@@ -14,6 +14,8 @@
     "UseStyle": false,
     "IsInShape": false,
     "UseHyperlink": false,
-    "ErrorString": "run in paragraph 0 references charPrIDRef=99 with no matching <hh:charPr>"
+    "ErrorString": "run in paragraph 0 references charPrIDRef=99 with no matching <hh:charPr>",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]
