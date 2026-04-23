@@ -32,6 +32,9 @@
     "TableCol": 0,
     "UseStyle": true,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "expected bold=false, got true",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

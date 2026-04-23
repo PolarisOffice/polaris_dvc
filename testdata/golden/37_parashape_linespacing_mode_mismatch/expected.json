@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "line spacing type \"PERCENT\" != spec \"FIXED\"",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

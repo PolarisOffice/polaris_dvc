@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "shadow-color 0xff0000 != spec 0x0",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

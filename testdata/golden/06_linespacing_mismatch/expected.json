@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "line spacing 180 outside spec 160",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

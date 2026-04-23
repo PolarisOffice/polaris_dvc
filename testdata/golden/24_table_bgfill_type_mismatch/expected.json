@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 600 bgfill-type 0 != spec 1",
+    "FileLabel": "section0"
   }
 ]

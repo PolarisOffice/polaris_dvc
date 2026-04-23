@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 500 width 42520 outside spec 30000",
+    "FileLabel": "section0"
   }
 ]

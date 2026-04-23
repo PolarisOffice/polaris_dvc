@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "shadow-x 25 outside spec 0..=20",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

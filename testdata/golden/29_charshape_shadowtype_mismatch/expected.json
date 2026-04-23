@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "shadowtype \"CONTINUOUS\" (ord=2) != spec \"비연속\" (ord=1)",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

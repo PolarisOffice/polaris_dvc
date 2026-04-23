@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": true
+    "UseHyperlink": true,
+    "ErrorString": "hyperlink run found but not permitted",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

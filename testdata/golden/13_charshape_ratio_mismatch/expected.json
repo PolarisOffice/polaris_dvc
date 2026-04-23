@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "ratio 90 outside spec 100",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

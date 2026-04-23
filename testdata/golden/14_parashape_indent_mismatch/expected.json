@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "indent 500 outside spec 0",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

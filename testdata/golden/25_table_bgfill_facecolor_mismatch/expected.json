@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 601 bgfill-facecolor 0xff0000 != spec 0xffffff",
+    "FileLabel": "section0"
   }
 ]

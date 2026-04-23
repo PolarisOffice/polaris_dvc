@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 702 size-fixed (lock) false != spec true",
+    "FileLabel": "section0"
   }
 ]

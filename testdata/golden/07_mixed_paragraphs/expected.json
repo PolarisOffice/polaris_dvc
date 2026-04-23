@@ -13,7 +13,10 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "fontsize 14 pt outside spec 10",
+    "FileLabel": "section0",
+    "ByteOffset": 2671
   },
   {
     "CharIDRef": 1,
@@ -29,6 +32,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "expected bold=false, got true",
+    "FileLabel": "section0",
+    "ByteOffset": 2671
   }
 ]

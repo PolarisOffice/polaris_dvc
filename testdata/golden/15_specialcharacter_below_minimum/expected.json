@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "code point U+0009 outside spec [Some(32), Some(1048575)]",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

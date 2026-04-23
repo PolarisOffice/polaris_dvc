@@ -13,6 +13,7 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "numbering id 3 level 1: numFormat \"^1)\" != spec \"^1.\""
   }
 ]

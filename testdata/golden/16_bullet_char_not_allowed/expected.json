@@ -13,6 +13,7 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "bullet id 1 char '★' not in allowed set \"□○-•*\""
   }
 ]

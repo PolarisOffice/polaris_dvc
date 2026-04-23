@@ -139,26 +139,21 @@ impl ViolationRecord {
             obj.insert("UseHyperlink".into(), json!(self.use_hyperlink));
         }
 
-        // polaris-only location hints + developer diagnostic string —
-        // emitted only when populated AND only for polaris-original
-        // JID categories (11000+), so DVC-compat golden output for
-        // rule/charshape/parashape/... violations (JIDs 1000-10999)
-        // stays byte-exact. `ErrorString` carries the specific message
-        // from the integrity / schema / container checkers (e.g.,
-        // which allowed children the unexpected one deviated from);
-        // the web demo and other consumers show this instead of the
-        // generic `ErrorCode::text()`.
-        let is_polaris_ext = self.error_code.value() >= 11000;
-        if is_polaris_ext {
-            if !self.error_string.is_empty() {
-                obj.insert("ErrorString".into(), json!(self.error_string));
-            }
-            if !self.file_label.is_empty() {
-                obj.insert("FileLabel".into(), json!(self.file_label));
-            }
-            if self.byte_offset != 0 {
-                obj.insert("ByteOffset".into(), json!(self.byte_offset));
-            }
+        // polaris-only hint fields — emitted when populated. The
+        // DvcStrict profile clears them at `Ctx::push` time before
+        // they ever reach this serializer, so upstream-DVC byte
+        // parity is preserved through a gate at that layer, not
+        // this one. `ErrorString` carries checker-specific diagnostic
+        // text, `FileLabel`+`ByteOffset` power click-to-locate in
+        // the web demo and other downstream tooling.
+        if !self.error_string.is_empty() {
+            obj.insert("ErrorString".into(), json!(self.error_string));
+        }
+        if !self.file_label.is_empty() {
+            obj.insert("FileLabel".into(), json!(self.file_label));
+        }
+        if self.byte_offset != 0 {
+            obj.insert("ByteOffset".into(), json!(self.byte_offset));
         }
 
         v
@@ -207,18 +202,16 @@ impl ViolationRecord {
             write_xml_attr(out, "UseHyperlink", bool_xml(self.use_hyperlink));
         }
         // polaris-only extras — mirror the JSON gate exactly so the
-        // two formats stay diffable.
-        let is_polaris_ext = self.error_code.value() >= 11000;
-        if is_polaris_ext {
-            if !self.error_string.is_empty() {
-                write_xml_attr(out, "ErrorString", &self.error_string);
-            }
-            if !self.file_label.is_empty() {
-                write_xml_attr(out, "FileLabel", &self.file_label);
-            }
-            if self.byte_offset != 0 {
-                write_xml_attr(out, "ByteOffset", &self.byte_offset.to_string());
-            }
+        // two formats stay diffable. DvcStrict clears these at push
+        // time (see `Ctx::push`), so we just emit what's populated.
+        if !self.error_string.is_empty() {
+            write_xml_attr(out, "ErrorString", &self.error_string);
+        }
+        if !self.file_label.is_empty() {
+            write_xml_attr(out, "FileLabel", &self.file_label);
+        }
+        if self.byte_offset != 0 {
+            write_xml_attr(out, "ByteOffset", &self.byte_offset.to_string());
         }
         out.push_str("/>\n");
     }

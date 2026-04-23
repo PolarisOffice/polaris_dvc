@@ -32,6 +32,9 @@
     "TableCol": 0,
     "UseStyle": true,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "style id 7 used but not permitted",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

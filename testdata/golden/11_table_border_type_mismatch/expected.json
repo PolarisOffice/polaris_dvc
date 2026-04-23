@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 100 position 1 bordertype 3 (\"DASH\") != spec 1",
+    "FileLabel": "section0"
   }
 ]

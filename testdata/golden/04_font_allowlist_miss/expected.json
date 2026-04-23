@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "font '임의글꼴' not in allowlist [\"바탕\", \"돋움\", \"굴림\"]",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

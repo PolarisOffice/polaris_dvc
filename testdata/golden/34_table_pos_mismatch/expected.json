@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 700 textWrap \"TOP_AND_BOTTOM\" != spec \"SQUARE\"",
+    "FileLabel": "section0"
   }
 ]

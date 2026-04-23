@@ -13,6 +13,8 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "table 701 textFlow \"BOTH_SIDES\" != spec \"LEFT_ONLY\"",
+    "FileLabel": "section0"
   }
 ]

@@ -13,6 +13,9 @@
     "TableCol": 0,
     "UseStyle": false,
     "IsInShape": false,
-    "UseHyperlink": false
+    "UseHyperlink": false,
+    "ErrorString": "expected kerning=false, got true",
+    "FileLabel": "section0",
+    "ByteOffset": 873
   }
 ]

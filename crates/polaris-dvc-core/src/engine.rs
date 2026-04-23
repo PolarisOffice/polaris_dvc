@@ -113,16 +113,60 @@ struct Ctx<'a> {
     line_no: u32,
     before_vert_pos: i64,
     before_vert_size: i64,
+    /// Which section we're currently walking. `None` outside the
+    /// section loop (e.g. during the Container / Integrity /
+    /// document-scope prologue). Rule checkers push with `None`
+    /// set to skip auto-anchoring when the context isn't a single
+    /// section — document-scope violations (macro permission,
+    /// bullet permission, etc.) don't point at one specific section.
+    current_section: Option<usize>,
+    /// Which paragraph we're currently checking within
+    /// `current_section`. Only set during the per-paragraph walk.
+    current_para_id: Option<u32>,
 }
 
 impl<'a> Ctx<'a> {
-    fn push(&mut self, v: ViolationRecord) -> bool {
+    fn push(&mut self, mut v: ViolationRecord) -> bool {
         // Strict-mode gate: drop violations whose JID upstream leaves as
         // a no-op. This keeps our output byte-compatible with DVC.exe
         // while leaving the engine's over-implementations intact for the
         // default `Extended` profile.
-        if self.opts.profile == CheckProfile::DvcStrict && !dvc_strict_allows(v.error_code) {
-            return true;
+        if self.opts.profile == CheckProfile::DvcStrict {
+            if !dvc_strict_allows(v.error_code) {
+                return true;
+            }
+            // Clear polaris-only hint fields on the surviving records
+            // so JSON / XML output stays byte-identical to upstream
+            // DVC. (The DVC-compat fields — CharIDRef, ParaPrIDRef,
+            // errorText, PageNo, LineNo, ErrorCode, conditional
+            // table/style/shape/hyperlink — are the only thing
+            // upstream emits.)
+            v.error_string.clear();
+            v.file_label.clear();
+            v.byte_offset = 0;
+        } else if v.file_label.is_empty() {
+            // Extended profile: auto-anchor the violation to the
+            // section / paragraph the walker is currently inside, if
+            // the checker didn't set a more specific location. Only
+            // Rule-axis JIDs (1000-7999) go through this path with
+            // empty `file_label` — polaris-original axes
+            // (integrity / schema / container) set their own labels
+            // explicitly before push.
+            if let Some(si) = self.current_section {
+                v.file_label = format!("section{si}");
+                if v.byte_offset == 0 {
+                    if let Some(para_id) = self.current_para_id {
+                        let bytes = self
+                            .doc
+                            .structural
+                            .section_xml_bytes
+                            .get(si)
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        v.byte_offset = find_para_byte_offset(bytes, para_id);
+                    }
+                }
+            }
         }
         self.report.push(v);
         if self.opts.stop_on_first {
@@ -142,6 +186,8 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
         line_no: 1,
         before_vert_pos: 0,
         before_vert_size: 0,
+        current_section: None,
+        current_para_id: None,
     };
 
     // Container well-formedness (polaris-original, JID 12000-12999).
@@ -189,13 +235,15 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
     // Runs before the section walk so table violations report before any
     // run-level violations downstream of the table.
     if let Some(table_spec) = spec.table.as_ref() {
-        for section in &doc.sections {
+        for (si, section) in doc.sections.iter().enumerate() {
+            ctx.current_section = Some(si);
             for table in &section.tables {
                 if !check_table(&mut ctx, table, table_spec) {
                     return ctx.report;
                 }
             }
         }
+        ctx.current_section = None;
     }
 
     // Document-scope bullet / outline / paranumbullet checks.
@@ -225,12 +273,14 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
         }
     }
 
-    'sections: for section in &doc.sections {
+    'sections: for (si, section) in doc.sections.iter().enumerate() {
         // Per upstream `GetPageInfo`, vertical-position trackers reset per
         // section. Page counter is cumulative across sections.
         ctx.before_vert_pos = 0;
         ctx.before_vert_size = 0;
+        ctx.current_section = Some(si);
         for paragraph in &section.paragraphs {
+            ctx.current_para_id = Some(paragraph.id);
             // Opening page break for a paragraph that sits directly under the
             // section: either the first lineseg has vert_pos == 0, or its
             // vert_pos wrapped back above the previous paragraph's tail
@@ -271,7 +321,9 @@ pub fn validate(doc: &HwpxDocument, spec: &RuleSpec, opts: &EngineOptions) -> Re
                 }
             }
         }
+        ctx.current_para_id = None;
     }
+    ctx.current_section = None;
 
     ctx.report
 }

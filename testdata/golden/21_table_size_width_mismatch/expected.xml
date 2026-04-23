@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <violations>
-  <violation CharIDRef="0" ParaPrIDRef="0" errorText="" PageNo="1" LineNo="1" ErrorCode="3001" TableID="500" IsInTable="true" IsInTableInTable="false" TableRow="0" TableCol="0" UseStyle="false" IsInShape="false" UseHyperlink="false"/>
+  <violation CharIDRef="0" ParaPrIDRef="0" errorText="" PageNo="1" LineNo="1" ErrorCode="3001" TableID="500" IsInTable="true" IsInTableInTable="false" TableRow="0" TableCol="0" UseStyle="false" IsInShape="false" UseHyperlink="false" ErrorString="table 500 width 42520 outside spec 30000" FileLabel="section0"/>
 </violations>
