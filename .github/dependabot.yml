@@ -35,6 +35,24 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # Two 0.x crates we deliberately pin until we can dedicate a
+    # migration PR to them. Both are semver-0.x, meaning every minor
+    # bump (0.31 → 0.32, 0.6 → 0.7, …) is a breaking API change:
+    #   - quick-xml: 0.32 reworked Reader into a builder pattern,
+    #     0.36+ kept removing methods we use (trim_text,
+    #     check_end_names, BytesText::unescape signature).
+    #   - zip: 0.7+ introduced a FileOptionExtension generic that
+    #     breaks our `FileOptions::default()` callsites.
+    # Patches within the pinned minor (0.31.x, 0.6.x) still flow
+    # through so security fixes aren't blocked — only the
+    # breaking minor+major jumps are held back.
+    ignore:
+      - dependency-name: "quick-xml"
+        versions:
+          - ">= 0.32"
+      - dependency-name: "zip"
+        versions:
+          - ">= 0.7"
 
   - package-ecosystem: "github-actions"
     directory: "/"
