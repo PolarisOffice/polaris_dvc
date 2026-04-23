@@ -46,9 +46,11 @@ ViolationRecord 리스트 (1-6 의 union, severity 포함)
 
 ## 왜 확장하나
 
-1. **DVC 호환 한계 확인** — upstream binary 가 자기 샘플에도 crash, 실질
-   validation 못 함 (`docs/dvc-parity-handoff.md`). DVC 자체가 reference
-   로는 불안정
+1. **DVC 호환만으로는 부족** — upstream DVC 는 Windows 전용 바이너리이고,
+   그 의존 라이브러리 (`hwpx-owpml-model`) 는 Hancom Docs 에서 생성된
+   HWPX 파일의 일부 refID 를 구현하지 않아 실제 범용 검증 툴로는 한계가
+   있다 (자세한 내용: `docs/dvc-parity-handoff.md`). DVC 호환은 여전히
+   가치 있지만, 공개 레퍼런스 체커로는 그 위에 표준 기반 검증을 쌓아야 함
 2. **공개 도메인의 빈 자리** — OWPML XSD 로 HWPX 를 검증하는 공개 툴이
    없다. 한컴 `hwpx-owpml-model` 은 로딩만 하고 XSD 검증 안 함.
    `polaris-dvc` 가 KS X 6101 레퍼런스 체커 자리를 채움
