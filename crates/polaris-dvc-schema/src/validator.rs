@@ -246,11 +246,22 @@ pub fn validate_xml(xml: &[u8], root: OwpmlRoot) -> Vec<SchemaViolation> {
                                     .map(|c| c.into_owned())
                                     .unwrap_or_default();
                                 if let Some(err) = check_simple_type(&value, &ad.ty) {
+                                    // Prepend element + attribute context so
+                                    // downstream consumers (web demo, CLI
+                                    // output) don't have to cross-reference
+                                    // the `element`/`attribute` fields of
+                                    // the violation to know *which* attr
+                                    // failed type-checking.
+                                    let message = format!(
+                                        "<{elem}> attribute '{attr}': {err}",
+                                        elem = decl.name,
+                                        attr = name,
+                                    );
                                     violations.push(SchemaViolation {
                                         code: ViolationCode::AttributeTypeMismatch,
                                         element: decl.name.to_string(),
                                         attribute: Some(name),
-                                        message: err,
+                                        message,
                                         byte_offset: offset,
                                     });
                                 }
