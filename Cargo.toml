@@ -20,7 +20,7 @@ authors = ["Polaris DVC Contributors"]
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-thiserror = "1"
+thiserror = "2"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 quick-xml = { version = "0.31", features = ["serialize"] }
 clap = { version = "4", features = ["derive"] }
