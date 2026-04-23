@@ -91,6 +91,28 @@ absorbs; otherwise `child_max × outer_max`). Nested group
 modifiers (`xs:sequence` / `xs:choice` / `xs:all`) compound their
 own `maxOccurs` on top of the outer.
 
+### 3. Elements typed as `xs:*` primitives reported as no-text
+
+**Symptom.** `<forbiddenWord> has character data but its complex
+type is not mixed` on every `<hh:forbiddenWord>Foo</hh:forbiddenWord>`
+entry. Seen on `에러페이지.hwpx` which has 4 entries in its
+`<forbiddenWordList>`.
+
+**Cause.** KS X 6101 declares
+`<xs:element name="forbiddenWord" type="xs:string"/>` — a text-only
+leaf. Our codegen stripped the `xs:` prefix and looked `"string"`
+up in the complex-type registry; not found, so `flatten_complex`
+returned a default `ComplexTypeBody { text_allowed: false, … }`.
+The generated model entry ended up with `text_allowed: false`,
+and the validator then rejected the legal text content as
+unexpected. Affects every XSD element whose type is one of the
+~40 built-in `xs:*` primitives.
+
+**Fix.** New `is_xs_primitive_name` helper enumerates the standard
+XSD primitive types. `build_flat_model` detects "type key that
+didn't resolve anywhere, but is a known primitive" and flips
+`text_allowed: true` on the emitted entry.
+
 ## Golden fixture findings
 
 The 44 fixtures under `testdata/golden/` are synthetic — built from

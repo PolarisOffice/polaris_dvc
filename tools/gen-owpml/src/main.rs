@@ -694,6 +694,60 @@ enum FlatType {
 /// we fold the two names together so the generated model actually
 /// matches the type where it's used. If the fallback hits, we return
 /// the canonical (defined) key so downstream bookkeeping lines up.
+/// Is this type key one of the XML Schema built-in primitive types
+/// (after our `strip_prefix` has removed the `xs:` namespace tag)?
+/// Elements whose `type=` points to one of these are text-only leaves
+/// by XSD semantics — `<xs:element name="x" type="xs:string"/>` means
+/// "x contains text and nothing else." Our registry doesn't hold
+/// entries for these, so we recognise them by name during model
+/// flattening and flip `text_allowed` on accordingly.
+fn is_xs_primitive_name(key: &str) -> bool {
+    matches!(
+        key,
+        "string"
+            | "integer"
+            | "int"
+            | "long"
+            | "short"
+            | "byte"
+            | "nonNegativeInteger"
+            | "positiveInteger"
+            | "negativeInteger"
+            | "nonPositiveInteger"
+            | "unsignedInt"
+            | "unsignedLong"
+            | "unsignedShort"
+            | "unsignedByte"
+            | "boolean"
+            | "decimal"
+            | "double"
+            | "float"
+            | "ID"
+            | "IDREF"
+            | "IDREFS"
+            | "NCName"
+            | "Name"
+            | "NMTOKEN"
+            | "NMTOKENS"
+            | "token"
+            | "normalizedString"
+            | "base64Binary"
+            | "hexBinary"
+            | "anyURI"
+            | "QName"
+            | "dateTime"
+            | "date"
+            | "time"
+            | "duration"
+            | "gYear"
+            | "gYearMonth"
+            | "gMonth"
+            | "gMonthDay"
+            | "gDay"
+            | "language"
+    )
+}
+
 fn canonical_type_key(raw: &str, reg: &SchemaRegistry) -> String {
     if raw.is_empty() || raw.starts_with("__inline_") || raw.starts_with("__open_") {
         return raw.to_string();
@@ -876,13 +930,23 @@ fn build_flat_model(
             })
             .collect();
 
+        // `flatten_complex` returns an empty `ComplexTypeBody::default()`
+        // when the type key isn't a registered complex type. That's
+        // expected for `xs:*` primitive types that appear as element
+        // type refs (e.g. `<xs:element name="forbiddenWord"
+        // type="xs:string"/>` — a text-only leaf). Detect that case
+        // and flip `text_allowed` on so the validator doesn't report
+        // the element's text content as unexpected.
+        let unresolved_primitive = !reg.complex_types.contains_key(&type_key)
+            && !reg.simple_types.contains_key(&type_key)
+            && is_xs_primitive_name(&type_key);
         out.insert(
             type_key.clone(),
             FlatElement {
                 name: elem_name,
                 children: new_children,
                 attributes: new_attrs,
-                text_allowed: body.text_allowed,
+                text_allowed: body.text_allowed || unresolved_primitive,
             },
         );
 

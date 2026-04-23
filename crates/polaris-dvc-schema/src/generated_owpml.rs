@@ -2390,7 +2390,7 @@ static HEAD_ELEMENTS: &[(&str, ElementDecl)] = &[
             name: "hash",
             children: &[],
             attributes: &[],
-            text_allowed: false,
+            text_allowed: true,
         },
     ),
     (
@@ -2399,7 +2399,7 @@ static HEAD_ELEMENTS: &[(&str, ElementDecl)] = &[
             name: "forbiddenWord",
             children: &[],
             attributes: &[],
-            text_allowed: false,
+            text_allowed: true,
         },
     ),
 ];
