@@ -3,7 +3,7 @@
 Minimal browser UI around `polaris-dvc-wasm`. Drop an `.hwpx`, edit
 the rule spec, click **Validate**, see the DVC-shaped violation list.
 
-**Live demo:** <https://miles-hs-lee.github.io/polaris_rhwpdvc/>
+**Live demo:** <https://polarisoffice.github.io/polaris_dvc/>
 
 Published on every push to `main` via `.github/workflows/pages.yml` —
 the workflow builds the WASM, flattens the demo into a self-contained

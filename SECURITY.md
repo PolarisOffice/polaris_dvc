@@ -56,7 +56,7 @@ Out of scope:
 
 Use **GitHub's private vulnerability reporting**:
 
-1. Go to <https://github.com/miles-hs-lee/polaris_rhwpdvc/security>.
+1. Go to <https://github.com/PolarisOffice/polaris_dvc/security>.
 2. Click **"Report a vulnerability"**.
 3. Fill in the template. Attach a proof-of-concept HWPX / rule
    JSON if you have one.

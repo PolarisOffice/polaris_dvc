@@ -2,7 +2,7 @@
 
 HWPX(OWPML) 문서의 **형식·구조·스키마·무결성**을 한 번에 검증하는 순수 Rust 툴체인. macOS · Linux · Windows · 브라우저(WASM) 모두 같은 코드 경로로 빌드된다.
 
-🌐 브라우저 데모: <https://miles-hs-lee.github.io/polaris_rhwpdvc/>
+🌐 브라우저 데모: <https://polarisoffice.github.io/polaris_dvc/>
 
 ## 배경
 

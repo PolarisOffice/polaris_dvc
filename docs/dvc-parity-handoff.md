@@ -100,7 +100,7 @@ Dispatch from CLI:
 ```bash
 curl -X POST -H "Authorization: Bearer $GITHUB_PAT" \
      -H "Accept: application/vnd.github+json" \
-     "https://api.github.com/repos/miles-hs-lee/polaris_rhwpdvc/actions/workflows/dvc-parity.yml/dispatches" \
+     "https://api.github.com/repos/PolarisOffice/polaris_dvc/actions/workflows/dvc-parity.yml/dispatches" \
      -d '{"ref":"main","inputs":{"reuse_artifact_from_run":"24653580323"}}'
 ```
 
@@ -430,9 +430,9 @@ gone into the CI build.
 
 ## 12. Contact / context
 
-- Repo: <https://github.com/miles-hs-lee/polaris_rhwpdvc>
+- Repo: <https://github.com/PolarisOffice/polaris_dvc>
 - Branch protection on main: force-push and deletion blocked; no
   other gates.
 - PAT is in `.env.local` (gitignored); `scripts/push.sh` wraps it.
-- Workflow runs: <https://github.com/miles-hs-lee/polaris_rhwpdvc/actions>
+- Workflow runs: <https://github.com/PolarisOffice/polaris_dvc/actions>
 - Hand-off date: 2026-04-20.

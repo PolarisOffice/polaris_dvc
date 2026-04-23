@@ -29,7 +29,7 @@ the human-contributor counterpart.
 Requires Rust 1.82 or newer (pinned in `rust-toolchain.toml`).
 
 ```sh
-git clone https://github.com/miles-hs-lee/polaris_rhwpdvc
+git clone https://github.com/PolarisOffice/polaris_dvc
 cd polaris_dvc
 cargo build --workspace
 cargo test  --workspace --exclude polaris-dvc-wasm

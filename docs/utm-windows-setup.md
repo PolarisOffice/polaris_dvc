@@ -92,7 +92,7 @@ VS Build Tools 은 무거움 (~7 GB 다운, 설치 후 ~10 GB). 차 한 잔.
 ```powershell
 # 적당한 작업 디렉토리
 cd C:\dev
-git clone https://github.com/miles-hs-lee/polaris_rhwpdvc
+git clone https://github.com/PolarisOffice/polaris_dvc
 cd polaris_dvc
 ```
 
