@@ -20,6 +20,11 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# Keep this in sync with `.github/workflows/ci.yml` so CI and the
+# deployed demo always ship the same wasm-pack artifact.
+env:
+  WASM_PACK_VERSION: "0.14.0"
+
 jobs:
   build:
     name: Build + stage site
@@ -33,8 +38,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      # See ci.yml for the rationale behind this pinning pattern.
+      - name: Install wasm-pack (SHA-pinned action)
+        uses: taiki-e/install-action@74e87cbfa15a59692b158178d8905a61bf6fca95 # v2.75.20
+        with:
+          tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
 
       - name: Build polaris-dvc-wasm
         run: wasm-pack build crates/polaris-dvc-wasm --target web --out-name polaris_dvc

@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# wasm-pack version to install. Bump deliberately; the SHA-pinned
+# installer below pulls the exact pre-built binary for this tag from
+# rustwasm/wasm-pack's GitHub release, not from any `curl | sh`
+# installer script. Release notes: https://github.com/rustwasm/wasm-pack/releases
+env:
+  WASM_PACK_VERSION: "0.14.0"
+
 jobs:
   native:
     name: Native (${{ matrix.os }})
@@ -35,8 +42,17 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      # SHA-pinned installer: downloads the exact pre-built wasm-pack
+      # binary for $WASM_PACK_VERSION from rustwasm/wasm-pack's GitHub
+      # release. Avoids the `curl | sh` pattern that ran every build
+      # against whatever `init.sh` happened to be live at the time.
+      # The SHA pin guards against upstream-action tag retargeting;
+      # bump with care (`curl -s https://api.github.com/repos/taiki-e/
+      # install-action/releases/latest`).
+      - name: Install wasm-pack (SHA-pinned action)
+        uses: taiki-e/install-action@74e87cbfa15a59692b158178d8905a61bf6fca95 # v2.75.20
+        with:
+          tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
       - name: wasm-pack build (web)
         run: wasm-pack build crates/polaris-dvc-wasm --target web
       - name: wasm-pack build (nodejs)
