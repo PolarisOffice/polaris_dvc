@@ -1042,7 +1042,7 @@ function wireGoldenPreset() {
 }
 
 async function main() {
-  loadPreset("charshape");
+  loadPreset("minimal");
   wireDropZone();
   wirePresets();
   wireSpecIO();
