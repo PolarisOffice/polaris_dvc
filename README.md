@@ -82,8 +82,8 @@ cargo run -p polaris-dvc-cli -- [OPTIONS] <HWPX_FILE>
 |---|---|
 | `0` | 위반 없음 |
 | `1` | 위반 검출 |
-| `2` | 사용법 오류 (플래그 조합 불가, 파일 없음 등) |
-| `3` | HWPX 파싱 실패 |
+| `2` | 사용법 오류 (플래그 조합 불가, `--dvc-strict` 하의 `-x` 등) |
+| `3` | 입력 읽기 실패 (파일 없음 등) 또는 HWPX/spec 파싱 실패 |
 
 한컴 DVC 는 exit code 정책을 문서화하지 않아 polaris 쪽에서 자체 정의했습니다. 세부 대응표는 [`docs/cli-compat.md`](docs/cli-compat.md).
 
