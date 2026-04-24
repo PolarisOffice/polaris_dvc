@@ -1,0 +1,27 @@
+# Force LF line endings on all text files, regardless of the
+# contributor's platform. Without this, Git for Windows' default
+# `core.autocrlf=true` silently converts LF → CRLF on checkout,
+# which breaks byte-exact comparisons the golden-test suite relies
+# on — specifically `expected.xml` and `manifest.json`, both of
+# which are read via `fs::read_to_string` and compared verbatim
+# against the engine's LF-only output.
+#
+# (`expected.json` is compared as parsed `serde_json::Value`, so
+# it tolerates line-ending drift — the fix still covers it for
+# general hygiene.)
+
+# Default: auto-detect text, force LF on any text file.
+* text=auto eol=lf
+
+# Explicit binary markers — git won't attempt to diff or rewrite
+# line endings on these, even when content looks text-ish.
+*.hwpx   binary
+*.hwp    binary
+*.wasm   binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.zip    binary
+*.tar.gz binary
+*.pdf    binary
