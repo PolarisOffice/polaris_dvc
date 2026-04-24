@@ -167,7 +167,7 @@ CLI엔 연결 안 됨.
 JSON 출력과 1:1. Empty-text drop 규칙도 JSON과 동일.
 
 구현: `Report::to_xml_string(option)`, `ViolationRecord::append_xml`.
-Golden: 각 케이스당 `expected.xml` 커밋됨 (66개).
+Golden: 각 케이스당 `expected.xml` 커밋됨 (44개).
 
 ---
 
