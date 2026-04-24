@@ -45,7 +45,7 @@ that polaris matches DVC bit-for-bit on a given fixture, use a Windows
 (or Wine) environment:
 
 ```cmd
-DVCModel.exe -j --file=actual.json -t testdata\golden\02_fontsize_mismatch\spec.json testdata\golden\02_fontsize_mismatch\doc.hwpx
+ExampleWindows.exe -j --file=actual.json -t testdata\golden\02_fontsize_mismatch\spec.json testdata\golden\02_fontsize_mismatch\doc.hwpx
 diff actual.json testdata\golden\02_fontsize_mismatch\expected.json
 ```
 
