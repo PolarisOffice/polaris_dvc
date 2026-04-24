@@ -104,16 +104,22 @@ polaris-dvc --dvc-strict -t rules.json doc.hwpx
 
 ### 3. Schema 검증만
 
+> **Note**: `--only=<axis>` 플래그는 아직 구현되지 않았습니다 (로드맵 예정).
+> 현재는 `--enable-schema` 로 schema 축을 켜면 다른 축과 함께 실행됩니다.
+
 ```sh
-polaris-dvc --only=schema doc.hwpx
-# → rule spec 없이도 OK. 순수 표준 적합성만
+polaris-dvc --enable-schema doc.hwpx
+# → schema 포함 전체 검사 (rule spec 없이도 OK)
 ```
 
 ### 4. Container 검증만 (빠른 sanity check)
 
+> **Note**: `--only=<axis>` 플래그는 아직 구현되지 않았습니다 (로드맵 예정).
+> 현재는 모든 활성화된 축이 함께 실행됩니다.
+
 ```sh
-polaris-dvc --only=container doc.hwpx
-# → ZIP 수준만, XML 파싱 안 함. 대량 파일 스크리닝용
+polaris-dvc doc.hwpx
+# → container + integrity 포함 전체 검사 (rule spec 없이도 OK)
 ```
 
 ## Crate 분리
