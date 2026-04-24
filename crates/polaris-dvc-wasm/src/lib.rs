@@ -72,9 +72,14 @@ fn prepare(
         serde_wasm_bindgen::from_value(opts).map_err(|e| JsError::new(&e.to_string()))?
     };
 
-    let doc = match polaris_dvc_format::parse(hwpx).map_err(|e| JsError::new(&e.to_string()))? {
-        polaris_dvc_format::Document::Hwpx(d) => d,
-    };
+    // `Document` currently has a single `Hwpx` variant (HWP5 is a
+    // reserved slot that `polaris_dvc_format::sniff` routes through
+    // but `parse` doesn't produce yet). A `let` pattern is infallible
+    // today; if/when the enum grows, this line will stop compiling
+    // and force every downstream site to handle the new variant
+    // explicitly — which is exactly what we want.
+    let polaris_dvc_format::Document::Hwpx(doc) =
+        polaris_dvc_format::parse(hwpx).map_err(|e| JsError::new(&e.to_string()))?;
 
     let engine_opts = EngineOptions {
         stop_on_first: runtime_opts.stop_on_first,
