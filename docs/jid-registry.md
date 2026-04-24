@@ -4,7 +4,7 @@
 
 `crates/polaris-dvc-core/src/jid_registry.rs` holds a `pub const JID_*:
 ErrorCode` declaration for every `#define JID_*` in upstream
-`third_party/dvc-upstream/Source/JsonModel.h` — 217 entries at the time
+`third_party/dvc-upstream/Source/JsonModel.h` — 218 entries at the time
 this was written.
 
 The curated `jid` submodule in `crates/polaris-dvc-core/src/error_codes.rs`
@@ -53,7 +53,7 @@ that check temporarily, set `POLARIS_ALLOW_JID_DRIFT=1`.
 
 ## Coverage status
 
-The full 217-entry registry is available as Rust constants. The engine
+The full 218-entry registry is available as Rust constants. The engine
 currently references ~30 of them through the curated aliases; the rest
 are declared so downstream work (additional table fields, border-fill
 rules on CharPr, outline-shape specifics, etc.) can reference them

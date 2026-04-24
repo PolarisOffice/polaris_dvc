@@ -1,7 +1,7 @@
 # DVC 기능 Parity 로드맵
 
 현재 polaris는 업스트림 `sample/test.json`이 쓰는 10개 카테고리 전부를
-커버하고 있고, `JsonModel.h`의 217개 JID 전부를 `jid_registry.rs`에
+커버하고 있고, `JsonModel.h`의 218개 JID 전부를 `jid_registry.rs`에
 상수로 매핑해 두었다. 진짜 "DVC parity"라고 부르려면 남은 것들이 있다.
 
 ## Parity 전략: Dual-mode (`CheckProfile`)
