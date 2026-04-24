@@ -74,7 +74,7 @@ cargo run -p polaris-dvc-cli -- [OPTIONS] <HWPX_FILE>
 | `-s`, `--simple` | 첫 위반이 나오면 즉시 중단. |
 | `--enable-schema` | 스키마 축(JID 13000+) 활성화. 기본은 off — 생성된 XSD 모델이 실제 HWPX 생태계의 drift(`<hp:linesegarray>` 등) 와 충돌해 오탐이 다수 발생하기 때문이에요. 필요할 때만 켜세요. |
 | `--dvc-strict` | 한컴 DVC 가 실제로 구현한 JID 만 출력. 11000/12000/13000 축과 한컴 DVC 의 no-op JID(table margin, bgfill 등)를 결과에서 제외해 한컴 DVC 와 바이트 수준 비교가 가능한 모드입니다. |
-| `--output-option=<set>` | 출력에 포함할 조건부 필드를 쉼표로 선택. `d`=default, `o`=outline, `t`=table, `i`=image, `p`=page, `y`=style, `k`=hyperlink. 한컴 DVC 의 7 개 단일-문자 토글(`-d`/`-o`/…) 을 하나로 통합한 형태입니다. |
+| `--output-option=<set>` | 출력에 포함할 조건부 필드를 선택. `default`, `all`(기본), `table`, `table-detail`, `shape`, `style`, `hyperlink`. 한컴 DVC 의 7 개 단일-문자 토글(`-d`/`-o`/…) 을 하나로 통합한 형태입니다. |
 
 ### Exit code
 
