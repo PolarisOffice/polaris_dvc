@@ -50,7 +50,7 @@ jobs:
       # bump with care (`curl -s https://api.github.com/repos/taiki-e/
       # install-action/releases/latest`).
       - name: Install wasm-pack (SHA-pinned action)
-        uses: taiki-e/install-action@74e87cbfa15a59692b158178d8905a61bf6fca95 # v2.75.20
+        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2.75.22
         with:
           tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
       - name: wasm-pack build (web)
