@@ -76,8 +76,8 @@ DVC 호환은 **기능 중 하나**. Spec 모드 (KS X 6101 표준 기준 검증
 
 | 블록 | 카테고리 | 상태 |
 |---|---|---|
-| 1000-7999 | Rule conformance (DVC 호환) | ✅ 217 개, 레지스트리 완성 |
-| 10000-10999 | Extended (polaris 독자 확장) | ✅ 일부 사용 중 |
+| 1000-7999 | Rule conformance (DVC 호환) | ✅ 218 개, 레지스트리 완성 |
+| 10000-10999 | Extended (polaris 독자 확장) | 📋 예약 (현재 미사용 — polaris 전용 확장 JID는 11000+ 블록에 배치) |
 | **11000-11999** | Integrity | 🚧 Phase 1 에서 10개 → 50+ 개 확장 |
 | **12000-12999** | Container | 🚧 Phase 2 신규 |
 | **13000-13999** | Schema conformance | 🚧 Phase 3 신규 |
