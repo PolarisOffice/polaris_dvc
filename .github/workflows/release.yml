@@ -188,7 +188,7 @@ jobs:
       # SHA-pinned to the v3 tag. Same rationale as ci.yml's wasm-pack
       # pin: guards against upstream tag retargeting.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
